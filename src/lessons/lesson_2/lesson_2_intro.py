@@ -181,7 +181,10 @@ def run(screen, clock, base_dir):
         panel_width = min(844, max(620, width - 120))
         panel_left = (width - panel_width) / 2
         image_rect = pygame.Rect(panel_left, 38, panel_width, 300)
-        text_rect = pygame.Rect(panel_left, 370, panel_width, 292)
+        prompt_y = height - 82
+        footer_y = height - 42
+        text_height = max(120, min(292, int(prompt_y - 34 - 370)))
+        text_rect = pygame.Rect(panel_left, 370, panel_width, text_height)
         if text_rect.width != last_text_width:
             lines = wrap_lines(intro_text, body_font, text_rect.width - 44)
             max_scroll = max(0, len(lines) * (body_font.get_height() + 8) - text_rect.height + 44)
@@ -196,10 +199,10 @@ def run(screen, clock, base_dir):
         draw_scroll_text(screen, text_rect, lines, body_font, scroll_y)
 
         prompt = "Press ␣ to launch Lesson 2"
-        render_inline_center(screen, prompt, prompt_font, ACCENT, (width / 2, height - 54))
+        render_inline_center(screen, prompt, prompt_font, ACCENT, (width / 2, prompt_y))
         screen.blit(
             small_font.render("F11: Max size  |  Esc: Menu  |  Mouse wheel or Up/Down: Scroll", True, MUTED_TEXT),
-            (panel_left, height - 54),
+            (panel_left, footer_y),
         )
 
         pygame.display.flip()

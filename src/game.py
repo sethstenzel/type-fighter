@@ -22,8 +22,10 @@ from display_helpers import (
 )
 from lessons.lesson_config import LESSON_PROGRESS
 from lessons.key_render import render_inline_text, render_key_label
+from lessons import mission_engine
 from lessons.mission_engine import create_star_field, draw_star_field, update_star_field
-from player_limits import MAX_PLAYER_LIVES
+import player_limits
+from game_config import ACHIEVEMENTS, GAME_SETTINGS, UPGRADE_CATALOG, load_cached_config, save_cached_config, apply_config
 from versioning import CLIENT_VERSION
 
 
@@ -52,93 +54,6 @@ UPGRADE_COLORS = (
     ("Rose", (244, 124, 143)),
     ("Gold", (255, 184, 77)),
 )
-UPGRADE_CATALOG = (
-    {
-        "id": "extra_life",
-        "name": "Extra Life",
-        "cost": 200,
-        "repeatable": True,
-        "requirement": "Unlock mission 2",
-        "min_unlocked": 2,
-        "icon": "extra_life.png",
-    },
-    {
-        "id": "shield_charge",
-        "name": "Shield Charge",
-        "cost": 300,
-        "repeatable": True,
-        "requirement": "Unlock mission 7",
-        "min_unlocked": 7,
-        "icon": "extra_shields.png",
-    },
-    {
-        "id": "shield_charge_3",
-        "name": "Shield Charge x3",
-        "cost": 600,
-        "repeatable": True,
-        "requirement": "Unlock mission 7",
-        "min_unlocked": 7,
-        "icon": "extra_shields_3.png",
-    },
-    {
-        "id": "extra_shield_slot_1",
-        "name": "Extra Shield Slot 1",
-        "cost": 2000,
-        "repeatable": False,
-        "requirement": "Lieutenant rank",
-        "min_rank": "Lieutenant",
-        "icon": "extra_shield_slot_1.png",
-    },
-    {
-        "id": "extra_shield_slot_2",
-        "name": "Extra Shield Slot 2",
-        "cost": 2000,
-        "repeatable": False,
-        "requirement": "Captain rank",
-        "min_rank": "Captain",
-        "requires_upgrade": "extra_shield_slot_1",
-        "icon": "extra_shield_slot_2.png",
-    },
-    {
-        "id": "defense_drone",
-        "name": "Defense Drone",
-        "cost": 2500,
-        "repeatable": False,
-        "requirement": "Lieutenant rank",
-        "min_rank": "Lieutenant",
-        "icon": "defense_drone.png",
-    },
-    {
-        "id": "second_defense_drone",
-        "name": "Second Defense Drone",
-        "cost": 2500,
-        "repeatable": False,
-        "requirement": "Captain rank",
-        "min_rank": "Captain",
-        "requires_upgrade": "defense_drone",
-        "icon": "defense_drone.png",
-    },
-    {
-        "id": "drone_splash_color",
-        "name": "Player Splash Color",
-        "cost": 250,
-        "repeatable": True,
-        "requirement": "Private rank",
-        "min_rank": "Private",
-        "color_choice": True,
-        "icon": "player_splash_color.png",
-    },
-    {
-        "id": "ammo_charge_color",
-        "name": "Shot Charge Color",
-        "cost": 500,
-        "repeatable": True,
-        "requirement": "Lieutenant rank",
-        "min_rank": "Lieutenant",
-        "color_choice": True,
-        "icon": "shot_charge_color.png",
-    },
-)
 RANK_ORDER = ("Rookie", "Private", "Lieutenant", "Captain", "Major")
 
 def running_as_frozen_app():
@@ -157,9 +72,11 @@ APP_CONFIG_DIR = BASE_DIR if running_as_frozen_app() else BASE_DIR.parent
 SETTINGS_PATH = BASE_DIR / "settings.cfg"
 SESSION_CACHE_PATH = APP_CONFIG_DIR / "type_fighter_session.json"
 AUTH_PREFS_PATH = APP_CONFIG_DIR / "type_fighter_auth_prefs.cfg"
+GAME_CONFIG_CACHE_PATH = APP_CONFIG_DIR / "type_fighter_game_config.json"
 is_fullscreen = True
 ui_image_cache = {}
 ui_sound_cache = {}
+menu_music_channel = None
 player_storage = {
     "remote_enabled": False,
     "server_url": "",
@@ -168,7 +85,16 @@ player_storage = {
     "save_login": False,
     "active_player_id": "",
     "warning": "",
+    "offline_warning": "",
 }
+
+
+def apply_game_settings():
+    global STARTING_LIVES, PLAYER_SHIELD_MAX_CHARGES
+    STARTING_LIVES = max(1, int(GAME_SETTINGS["starting_lives"]))
+    PLAYER_SHIELD_MAX_CHARGES = max(0, int(GAME_SETTINGS["player_shield_max_charges"]))
+    player_limits.MAX_PLAYER_LIVES = max(STARTING_LIVES, int(GAME_SETTINGS["max_player_lives"]))
+    mission_engine.apply_game_settings(GAME_SETTINGS)
 
 
 def return_to_signin():
@@ -180,6 +106,7 @@ def return_to_signin():
     player_storage["remote_enabled"] = False
     player_storage["token"] = ""
     player_storage["account"] = None
+    player_storage["offline_warning"] = ""
     clear_session_cache()
     return "signin"
 
@@ -223,20 +150,35 @@ def draw_text(surface, text, font, color, pos):
     render_inline_text(surface, text, font, color, pos)
 
 
-def draw_scrollbar(surface, track_rect, total_items, visible_items, first_visible):
+def scrollbar_thumb_rect(track_rect, total_items, visible_items, first_visible):
     if total_items <= visible_items:
-        return
-
-    pygame.draw.rect(surface, (18, 27, 48), track_rect, border_radius=4)
-    pygame.draw.rect(surface, (43, 57, 89), track_rect, 1, border_radius=4)
-
+        return None
     visible_ratio = visible_items / total_items
     thumb_height = max(28, int(track_rect.height * visible_ratio))
     max_first_visible = max(1, total_items - visible_items)
     travel = track_rect.height - thumb_height
     thumb_y = track_rect.y + int(travel * first_visible / max_first_visible)
-    thumb_rect = pygame.Rect(track_rect.x + 2, thumb_y, track_rect.width - 4, thumb_height)
+    return pygame.Rect(track_rect.x + 2, thumb_y, track_rect.width - 4, thumb_height)
+
+
+def draw_scrollbar(surface, track_rect, total_items, visible_items, first_visible):
+    thumb_rect = scrollbar_thumb_rect(track_rect, total_items, visible_items, first_visible)
+    if thumb_rect is None:
+        return None
+
+    pygame.draw.rect(surface, (18, 27, 48), track_rect, border_radius=4)
+    pygame.draw.rect(surface, (43, 57, 89), track_rect, 1, border_radius=4)
     pygame.draw.rect(surface, ACCENT, thumb_rect, border_radius=4)
+    return thumb_rect
+
+
+def drag_scroll_index(mouse_y, track_rect, thumb_height, total_items, visible_items, drag_offset):
+    max_first_visible = max(0, total_items - visible_items)
+    if max_first_visible <= 0:
+        return 0
+    travel = max(1, track_rect.height - thumb_height)
+    thumb_y = max(track_rect.y, min(mouse_y - drag_offset, track_rect.y + travel))
+    return int(round((thumb_y - track_rect.y) * max_first_visible / travel))
 
 
 def wheel_menu_step(event):
@@ -495,6 +437,8 @@ def player_shield_max_charges(player):
         max_charges += 1
     if has_upgrade(player, "extra_shield_slot_2"):
         max_charges += 1
+    if has_achievement(player, "fully_upgraded"):
+        max_charges += 1
     return max_charges
 
 
@@ -531,11 +475,16 @@ def normalize_players(data):
                 name[:24],
                 player_id=item.get("id"),
                 completed_lessons=completed_lessons,
-                lives=max(1, min(MAX_PLAYER_LIVES, lives)),
+                lives=max(1, min(player_limits.MAX_PLAYER_LIVES, lives)),
                 shield_charges=max(0, shield_charges),
                 lifetime_score=item.get("lifetime_score", 0),
                 achievements=item.get("achievements", []),
+                purchased_upgrade_ids=item.get("purchased_upgrade_ids", []),
+                sold_lives=item.get("sold_lives", 0),
+                sold_shields=item.get("sold_shields", 0),
                 credits=item.get("credits", 0),
+                perfect_lessons=item.get("perfect_lessons", []),
+                last_mission_stats=item.get("last_mission_stats", {}),
                 pod=item.get("pod", {}),
             )
         )
@@ -654,6 +603,10 @@ def draw_version_label(screen, font):
     label = font.render(f"v{CLIENT_VERSION}", True, MUTED_TEXT)
     width, height = screen.get_size()
     screen.blit(label, label.get_rect(right=width - 24, bottom=height - 26))
+    offline_warning = player_storage.get("offline_warning", "")
+    if offline_warning:
+        warning = font.render(offline_warning, True, LOCKED_SELECTED)
+        screen.blit(warning, warning.get_rect(right=label.get_rect(right=width - 24).left - 18, bottom=height - 26))
 
 
 def remote_request(method, path, payload=None, timeout=2):
@@ -697,6 +650,18 @@ def remote_server_version():
     data = remote_request("GET", "/version", timeout=2)
     version = data.get("version") if isinstance(data, dict) else ""
     return version.strip() if isinstance(version, str) else ""
+
+
+def remote_game_config():
+    return remote_request("GET", "/config", timeout=4)
+
+
+def load_remote_game_config():
+    data = remote_game_config()
+    apply_config(data)
+    apply_game_settings()
+    save_cached_config(GAME_CONFIG_CACHE_PATH)
+    logger.info("Loaded server game config")
 
 
 def version_mismatch_message(server_version):
@@ -768,6 +733,7 @@ def load_players():
             logger.exception("Remote player load failed; falling back to local players.json")
             player_storage["remote_enabled"] = False
             player_storage["warning"] = "Could not reach Type Fighter Server. Using local player data."
+            player_storage["offline_warning"] = "OFFLINE: online progress will not be saved"
     return load_local_players()
 
 
@@ -785,10 +751,12 @@ def save_players(players):
             logger.exception("Remote player save returned HTTP error; falling back to local players.json")
             player_storage["remote_enabled"] = False
             player_storage["warning"] = "Could not save to Type Fighter Server. Using local player data."
+            player_storage["offline_warning"] = "OFFLINE: online progress will not be saved"
         except (OSError, error.URLError, TimeoutError, json.JSONDecodeError):
             logger.exception("Remote player save failed; falling back to local players.json")
             player_storage["remote_enabled"] = False
             player_storage["warning"] = "Could not save to Type Fighter Server. Using local player data."
+            player_storage["offline_warning"] = "OFFLINE: online progress will not be saved"
     save_local_players(players)
 
 
@@ -800,16 +768,18 @@ def create_player_record(
     shield_charges=0,
     lifetime_score=0,
     achievements=None,
+    purchased_upgrade_ids=None,
+    sold_lives=0,
+    sold_shields=0,
     credits=0,
+    perfect_lessons=None,
+    last_mission_stats=None,
     pod=None,
 ):
     if not isinstance(lifetime_score, int):
         lifetime_score = 0
     if not isinstance(credits, int):
         credits = 0
-    if not isinstance(achievements, list):
-        achievements = []
-
     pod = pod if isinstance(pod, dict) else {}
     pod_color = pod.get("color", DEFAULT_POD["color"])
     pod_type = pod.get("type", DEFAULT_POD["type"])
@@ -828,16 +798,24 @@ def create_player_record(
         shield_cap += 1
     if "extra_shield_slot_2" in upgrade_id_set:
         shield_cap += 1
+    achievement_awards = normalize_achievement_awards(achievements)
+    if achievement_awards.get("fully_upgraded"):
+        shield_cap += 1
 
     return {
         "id": str(player_id or uuid.uuid4()),
         "name": name,
         "completed_lessons": completed_lessons or [],
-        "lives": max(1, min(MAX_PLAYER_LIVES, lives)),
+        "lives": max(1, min(player_limits.MAX_PLAYER_LIVES, lives)),
         "shield_charges": max(0, min(shield_cap, shield_charges)),
         "lifetime_score": max(0, lifetime_score),
-        "achievements": achievements,
+        "achievements": achievement_awards,
+        "purchased_upgrade_ids": normalize_string_list(purchased_upgrade_ids),
+        "sold_lives": max(0, sold_lives) if isinstance(sold_lives, int) else 0,
+        "sold_shields": max(0, sold_shields) if isinstance(sold_shields, int) else 0,
         "credits": max(0, credits),
+        "perfect_lessons": normalize_lesson_number_list(perfect_lessons),
+        "last_mission_stats": last_mission_stats if isinstance(last_mission_stats, dict) else {},
         "pod": {
             "color": pod_color,
             "type": pod_type,
@@ -860,6 +838,18 @@ def completed_prefix_count(player):
     return count
 
 
+def normalize_lesson_number_list(values):
+    if not isinstance(values, list):
+        return []
+    return sorted(
+        {
+            value
+            for value in values
+            if isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= len(LESSONS)
+        }
+    )
+
+
 def unlocked_lesson_count(player):
     return min(len(LESSONS), completed_prefix_count(player) + 1)
 
@@ -878,8 +868,46 @@ def player_rank(player):
 
 
 def achievement_count(player):
-    achievements = player.get("achievements", [])
-    return len(achievements) if isinstance(achievements, list) else 0
+    return len(normalized_achievement_ids(player.get("achievements", {})))
+
+
+def normalize_string_list(values):
+    if not isinstance(values, list):
+        return []
+    normalized = []
+    seen = set()
+    for value in values:
+        if isinstance(value, dict):
+            value = value.get("id")
+        if not isinstance(value, str):
+            continue
+        cleaned = value.strip()
+        if cleaned and cleaned not in seen:
+            normalized.append(cleaned)
+            seen.add(cleaned)
+    return normalized
+
+
+def normalize_achievement_awards(values):
+    if isinstance(values, dict):
+        normalized = {}
+        for achievement_id, awarded in values.items():
+            if isinstance(achievement_id, str) and achievement_id.strip():
+                normalized[achievement_id.strip()] = bool(awarded)
+        return normalized
+    return {achievement_id: True for achievement_id in normalize_string_list(values)}
+
+
+def normalized_achievement_ids(values):
+    return [
+        achievement_id
+        for achievement_id, awarded in normalize_achievement_awards(values).items()
+        if awarded
+    ]
+
+
+def has_achievement(player, achievement_id):
+    return achievement_id in normalized_achievement_ids(player.get("achievements", {}))
 
 
 def player_credits(player):
@@ -889,7 +917,7 @@ def player_credits(player):
 
 def player_lives(player):
     lives = player.get("lives", STARTING_LIVES)
-    return max(1, min(MAX_PLAYER_LIVES, lives)) if isinstance(lives, int) else STARTING_LIVES
+    return max(1, min(player_limits.MAX_PLAYER_LIVES, lives)) if isinstance(lives, int) else STARTING_LIVES
 
 
 def rank_at_least(player, minimum_rank):
@@ -906,7 +934,7 @@ def upgrade_by_id(upgrade_id):
 def upgrade_lock_reason(player, upgrade):
     if not upgrade.get("repeatable") and has_upgrade(player, upgrade["id"]):
         return "Owned"
-    if upgrade["id"] == "extra_life" and player_lives(player) >= MAX_PLAYER_LIVES:
+    if upgrade["id"] == "extra_life" and player_lives(player) >= player_limits.MAX_PLAYER_LIVES:
         return "Life max"
     min_unlocked = upgrade.get("min_unlocked")
     if min_unlocked and unlocked_lesson_count(player) < min_unlocked:
@@ -995,8 +1023,11 @@ def remove_pod_upgrade_entries(player, upgrade_id, count):
 
 def apply_upgrade_purchase(player, upgrade, color_name=None):
     player["credits"] = max(0, player_credits(player) - upgrade["cost"])
+    purchased = set(normalize_string_list(player.get("purchased_upgrade_ids", [])))
+    purchased.add(upgrade["id"])
+    player["purchased_upgrade_ids"] = sorted(purchased)
     if upgrade["id"] == "extra_life":
-        player["lives"] = min(MAX_PLAYER_LIVES, player_lives(player) + 1)
+        player["lives"] = min(player_limits.MAX_PLAYER_LIVES, player_lives(player) + 1)
     elif upgrade["id"] == "shield_charge":
         player["shield_charges"] = min(player_shield_max_charges(player), player.get("shield_charges", 0) + 1)
     elif upgrade["id"] == "shield_charge_3":
@@ -1034,9 +1065,11 @@ def apply_upgrade_sale(player, upgrade, quantity):
     if upgrade["id"] == "extra_life":
         quantity = min(quantity, max_sell_quantity(player, upgrade))
         player["lives"] = max(STARTING_LIVES, player.get("lives", STARTING_LIVES) - quantity)
+        player["sold_lives"] = max(0, player.get("sold_lives", 0)) + quantity
     elif upgrade["id"] == "shield_charge":
         quantity = min(quantity, max_sell_quantity(player, upgrade))
         player["shield_charges"] = max(0, player.get("shield_charges", 0) - quantity)
+        player["sold_shields"] = max(0, player.get("sold_shields", 0)) + quantity
     else:
         return
     player["credits"] = player_credits(player) + upgrade_sell_value(upgrade) * quantity
@@ -1046,6 +1079,24 @@ def mark_lesson_complete(player, lesson_number):
     completed = set(player.get("completed_lessons", []))
     completed.add(lesson_number)
     player["completed_lessons"] = sorted(completed)
+
+
+def mark_lesson_perfect_if_applicable(player, lesson_number):
+    stats = player.get("last_mission_stats")
+    if not isinstance(stats, dict):
+        return False
+    if (
+        stats.get("lesson_number") != lesson_number
+        or not stats.get("won")
+        or stats.get("hits_taken", 0) != 0
+        or stats.get("inaccurate_inputs", 0) != 0
+    ):
+        return False
+    perfect_lessons = set(normalize_lesson_number_list(player.get("perfect_lessons", [])))
+    before_count = len(perfect_lessons)
+    perfect_lessons.add(lesson_number)
+    player["perfect_lessons"] = sorted(perfect_lessons)
+    return len(perfect_lessons) != before_count
 
 
 def load_lesson_module(module_name):
@@ -1067,6 +1118,7 @@ def enforce_min_window_size(screen):
 
 
 def run_lesson(screen, clock, lesson, player):
+    stop_menu_music()
     intro = load_lesson_module(lesson["intro_module"])
     mission = load_lesson_module(lesson["mission_module"])
 
@@ -1150,6 +1202,7 @@ def create_player_screen(screen, clock, players):
 
 
 def player_select_loop(screen, clock):
+    ensure_menu_music()
     title_font = pygame.font.SysFont("arial", 54, bold=True)
     item_font = pygame.font.SysFont("arial", 30, bold=True)
     body_font = pygame.font.SysFont("arial", 22)
@@ -1161,6 +1214,13 @@ def player_select_loop(screen, clock):
     player_rects = []
     mock_battle = create_mock_battle()
     last_wheel_scroll_time = 0
+    scrollbar_rect = pygame.Rect(0, 0, 0, 0)
+    scrollbar_thumb = None
+    scrollbar_drag_offset = 0
+    dragging_scrollbar = False
+    visible_rows = 1
+    ignore_hover_until_mouse_move = False
+    hover_lock_mouse_pos = None
 
     while True:
         if player_storage.get("warning"):
@@ -1219,23 +1279,61 @@ def player_select_loop(screen, clock):
                     delete_confirm = True
                 elif event.key in (pygame.K_DOWN, pygame.K_s) and players:
                     selected = (selected + 1) % len(players)
+                    play_menu_beep()
                     delete_confirm = False
+                    ignore_hover_until_mouse_move = True
+                    hover_lock_mouse_pos = pygame.mouse.get_pos()
                 elif event.key in (pygame.K_UP, pygame.K_w) and players:
                     selected = (selected - 1) % len(players)
+                    play_menu_beep()
                     delete_confirm = False
+                    ignore_hover_until_mouse_move = True
+                    hover_lock_mouse_pos = pygame.mouse.get_pos()
                 elif event.key in (pygame.K_RETURN, pygame.K_SPACE) and players:
                     if claim_remote_player(players[selected]):
                         return players, players[selected]
             if event.type == pygame.MOUSEBUTTONDOWN and players:
                 if event.button == 1:
+                    if scrollbar_thumb is not None and scrollbar_thumb.collidepoint(event.pos):
+                        dragging_scrollbar = True
+                        scrollbar_drag_offset = event.pos[1] - scrollbar_thumb.y
+                        continue
                     for index, rect in player_rects:
                         if rect.collidepoint(event.pos):
                             if claim_remote_player(players[index]):
                                 return players, players[index]
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                dragging_scrollbar = False
+            if event.type == pygame.MOUSEMOTION and dragging_scrollbar and players:
+                first_visible = drag_scroll_index(
+                    event.pos[1],
+                    scrollbar_rect,
+                    scrollbar_thumb.height if scrollbar_thumb is not None else 28,
+                    len(players),
+                    visible_rows,
+                    scrollbar_drag_offset,
+                )
+                new_selected = min(len(players) - 1, first_visible + max(0, visible_rows - 1))
+                if new_selected != selected:
+                    selected = new_selected
+                    play_menu_beep()
+                delete_confirm = False
+            elif event.type == pygame.MOUSEMOTION and players:
+                if ignore_hover_until_mouse_move and event.pos == hover_lock_mouse_pos:
+                    continue
+                ignore_hover_until_mouse_move = False
+                for index, rect in player_rects:
+                    if rect.collidepoint(event.pos):
+                        if index != selected:
+                            selected = index
+                            play_menu_beep()
+                            delete_confirm = False
+                        break
             if event.type == pygame.MOUSEWHEEL and players:
                 step, last_wheel_scroll_time = should_apply_menu_wheel(event, last_wheel_scroll_time)
                 if step:
                     selected = (selected + step) % len(players)
+                    play_menu_beep()
                     delete_confirm = False
 
         screen = pygame.display.get_surface()
@@ -1288,7 +1386,9 @@ def player_select_loop(screen, clock):
                 )
                 draw_text(screen, summary, body_font, MUTED_TEXT, (x, y + 34))
             scrollbar_rect = pygame.Rect(content_left + content_width - 12, list_top - 20, 8, list_height)
-            draw_scrollbar(screen, scrollbar_rect, len(players), visible_rows, first_visible)
+            scrollbar_thumb = draw_scrollbar(screen, scrollbar_rect, len(players), visible_rows, first_visible)
+            if scrollbar_thumb is None:
+                dragging_scrollbar = False
 
         if delete_confirm and players:
             message = f"Delete {players[selected]['name']}? Press Y to confirm or N to cancel."
@@ -1368,6 +1468,7 @@ def apply_auth_response(data, save_login=False):
     player_storage["token"] = data["token"]
     player_storage["account"] = data.get("account") if isinstance(data.get("account"), dict) else {}
     player_storage["save_login"] = save_login
+    player_storage["offline_warning"] = ""
     save_session_cache()
 
 
@@ -1389,11 +1490,12 @@ def try_saved_session():
         clear_session_cache()
         return False
     player_storage["account"] = data.get("account", {}) if isinstance(data, dict) else {}
+    player_storage["offline_warning"] = ""
     logger.info("Saved session accepted for account {}", player_storage["account"].get("email", "unknown"))
     return True
 
 
-def auth_screen(screen, clock, blocked_message=""):
+def auth_screen(screen, clock, blocked_message="", initial_message=""):
     title_font = pygame.font.SysFont("arial", 46, bold=True)
     body_font = pygame.font.SysFont("arial", 24)
     small_font = pygame.font.SysFont("arial", 18)
@@ -1407,7 +1509,10 @@ def auth_screen(screen, clock, blocked_message=""):
     mode_rect = pygame.Rect(0, 0, 0, 0)
     exit_rect = pygame.Rect(0, 0, 0, 0)
     save_rect = pygame.Rect(0, 0, 0, 0)
-    message = ""
+    offline_rect = pygame.Rect(0, 0, 0, 0)
+    local_launch_rect = pygame.Rect(0, 0, 0, 0)
+    message = initial_message
+    offline_only = False
     stars = create_star_field()
 
     while True:
@@ -1418,16 +1523,19 @@ def auth_screen(screen, clock, blocked_message=""):
             if event.type == pygame.VIDEORESIZE:
                 screen = enforce_min_window_size(screen)
             if event.type == pygame.KEYDOWN:
-                active_fields = fields if create_account else ["email", "password"]
+                active_fields = [] if offline_only else fields if create_account else ["email", "password"]
                 if event.key == pygame.K_F11:
                     screen = toggle_fullscreen()
                 elif event.key == pygame.K_q:
                     return "quit"
                 elif event.key == pygame.K_ESCAPE:
                     return None
-                elif event.key == pygame.K_TAB:
+                elif event.key == pygame.K_TAB and active_fields:
                     selected = (selected + 1) % len(active_fields)
                 elif event.key == pygame.K_RETURN:
+                    if offline_only:
+                        player_storage["offline_warning"] = "OFFLINE: online progress will not be saved"
+                        return None
                     if blocked_message:
                         message = blocked_message
                         continue
@@ -1463,27 +1571,36 @@ def auth_screen(screen, clock, blocked_message=""):
                                 message = "Sign in failed."
                         except (OSError, error.URLError, TimeoutError, json.JSONDecodeError):
                             logger.exception("Authentication request failed")
+                            player_storage["offline_warning"] = "OFFLINE: online progress will not be saved"
                             message = "Could not contact the server."
                 elif event.key == pygame.K_BACKSPACE:
-                    active_field = active_fields[selected]
-                    values[active_field] = values[active_field][:-1]
+                    if active_fields:
+                        active_field = active_fields[selected]
+                        values[active_field] = values[active_field][:-1]
                 elif event.unicode and event.unicode.isprintable():
-                    active_field = active_fields[selected]
-                    if active_field in ("email", "username") and event.unicode.isspace():
-                        continue
-                    if len(values[active_field]) < 80:
-                        values[active_field] += event.unicode
+                    if active_fields:
+                        active_field = active_fields[selected]
+                        if active_field in ("email", "username") and event.unicode.isspace():
+                            continue
+                        if len(values[active_field]) < 80:
+                            values[active_field] += event.unicode
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 for index, rect in enumerate(field_rects):
                     if rect.collidepoint(event.pos):
                         selected = index
-                if mode_rect.collidepoint(event.pos):
+                if offline_rect.collidepoint(event.pos):
+                    offline_only = not offline_only
+                    selected = 0
+                if mode_rect.collidepoint(event.pos) and not offline_only:
                     create_account = not create_account
                     selected = min(selected, 2 if create_account else 1)
-                if save_rect.collidepoint(event.pos):
+                if save_rect.collidepoint(event.pos) and not offline_only:
                     save_login = not save_login
                     save_auth_preferences(save_login)
-                if login_rect.collidepoint(event.pos):
+                if local_launch_rect.collidepoint(event.pos) and offline_only:
+                    player_storage["offline_warning"] = "OFFLINE: online progress will not be saved"
+                    return None
+                if login_rect.collidepoint(event.pos) and not offline_only:
                     pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN, unicode="\r"))
                 if exit_rect.collidepoint(event.pos):
                     return "quit"
@@ -1497,9 +1614,15 @@ def auth_screen(screen, clock, blocked_message=""):
 
         title = title_font.render("TYPE FIGHTER SIGN IN", True, TEXT_COLOR)
         screen.blit(title, title.get_rect(center=(width / 2, height / 2 - 150)))
-        draw_text(screen, "Sign in to sync saves, or create a new account.", body_font, MUTED_TEXT, (left, height / 2 - 102))
+        draw_text(
+            screen,
+            "Sign in to sync saves, or choose offline only play.",
+            body_font,
+            MUTED_TEXT,
+            (left, height / 2 - 102),
+        )
         field_rects = []
-        visible_fields = fields if create_account else ["email", "password"]
+        visible_fields = [] if offline_only else fields if create_account else ["email", "password"]
         start_y = height / 2 - 58
         for index, field in enumerate(visible_fields):
             input_rect = pygame.Rect(left, start_y + index * 70, content_width, 56)
@@ -1509,22 +1632,41 @@ def auth_screen(screen, clock, blocked_message=""):
             placeholder = {"email": "email@example.com", "username": "Username", "password": "Password"}[field]
             value = "*" * len(values[field]) if field == "password" and values[field] else values[field]
             draw_text(screen, value or placeholder, body_font, TEXT_COLOR if value else MUTED_TEXT, (input_rect.x + 18, input_rect.y + 15))
-        save_rect = pygame.Rect(left, start_y + len(visible_fields) * 70 + 4, 26, 26)
-        pygame.draw.rect(screen, (13, 22, 42), save_rect, border_radius=4)
-        pygame.draw.rect(screen, ACCENT, save_rect, 2, border_radius=4)
-        if save_login:
-            pygame.draw.line(screen, ACCENT, (save_rect.x + 6, save_rect.centery), (save_rect.centerx, save_rect.bottom - 7), 3)
-            pygame.draw.line(screen, ACCENT, (save_rect.centerx, save_rect.bottom - 7), (save_rect.right - 5, save_rect.y + 6), 3)
-        draw_text(screen, "Save login on this computer", small_font, MUTED_TEXT, (save_rect.right + 10, save_rect.y + 3))
-        mode_rect = pygame.Rect(left, save_rect.bottom + 22, 210, 42)
-        login_rect = pygame.Rect(left + content_width - 190, save_rect.bottom + 22, 190, 42)
-        exit_rect = pygame.Rect(left + 226, save_rect.bottom + 22, 150, 42)
-        draw_modal_button(screen, mode_rect, "Create Account" if not create_account else "Sign In", body_font, True, False)
+        options_y = start_y + len(visible_fields) * 70 + 4
+        offline_rect = pygame.Rect(left, options_y, 26, 26)
+        pygame.draw.rect(screen, (13, 22, 42), offline_rect, border_radius=4)
+        pygame.draw.rect(screen, ACCENT, offline_rect, 2, border_radius=4)
+        if offline_only:
+            pygame.draw.line(screen, ACCENT, (offline_rect.x + 6, offline_rect.centery), (offline_rect.centerx, offline_rect.bottom - 7), 3)
+            pygame.draw.line(screen, ACCENT, (offline_rect.centerx, offline_rect.bottom - 7), (offline_rect.right - 5, offline_rect.y + 6), 3)
+        draw_text(screen, "Offline only play", small_font, MUTED_TEXT, (offline_rect.right + 10, offline_rect.y + 3))
+        if offline_only:
+            save_rect = pygame.Rect(0, 0, 0, 0)
+            mode_rect = pygame.Rect(0, 0, 0, 0)
+            login_rect = pygame.Rect(0, 0, 0, 0)
+            local_launch_rect = pygame.Rect(left + content_width - 230, offline_rect.bottom + 22, 230, 42)
+            exit_rect = pygame.Rect(left, offline_rect.bottom + 22, 150, 42)
+            draw_modal_button(screen, local_launch_rect, "Launch Local Play", body_font, True, True)
+        else:
+            save_rect = pygame.Rect(left, offline_rect.bottom + 16, 26, 26)
+            pygame.draw.rect(screen, (13, 22, 42), save_rect, border_radius=4)
+            pygame.draw.rect(screen, ACCENT, save_rect, 2, border_radius=4)
+            if save_login:
+                pygame.draw.line(screen, ACCENT, (save_rect.x + 6, save_rect.centery), (save_rect.centerx, save_rect.bottom - 7), 3)
+                pygame.draw.line(screen, ACCENT, (save_rect.centerx, save_rect.bottom - 7), (save_rect.right - 5, save_rect.y + 6), 3)
+            draw_text(screen, "Save login on this computer", small_font, MUTED_TEXT, (save_rect.right + 10, save_rect.y + 3))
+            mode_rect = pygame.Rect(left, save_rect.bottom + 22, 210, 42)
+            login_rect = pygame.Rect(left + content_width - 190, save_rect.bottom + 22, 190, 42)
+            exit_rect = pygame.Rect(left + 226, save_rect.bottom + 22, 150, 42)
+            local_launch_rect = pygame.Rect(0, 0, 0, 0)
+            draw_modal_button(screen, mode_rect, "Create Account" if not create_account else "Sign In", body_font, True, False)
+            draw_modal_button(screen, login_rect, "Create" if create_account else "Sign In", body_font, not blocked_message, not blocked_message)
         draw_modal_button(screen, exit_rect, "Exit", body_font, True, False)
-        draw_modal_button(screen, login_rect, "Create" if create_account else "Sign In", body_font, not blocked_message, not blocked_message)
         if message:
-            draw_text(screen, message, small_font, LOCKED_SELECTED, (left, login_rect.bottom + 18))
-        draw_text(screen, "Tab: Next field  |  Enter: Submit  |  Esc: Use local saves  |  F11: Max size", small_font, MUTED_TEXT, (left, height - 58))
+            message_y = local_launch_rect.bottom + 18 if offline_only else login_rect.bottom + 18
+            draw_text(screen, message, small_font, LOCKED_SELECTED, (left, message_y))
+        footer = "Enter: Launch local  |  Esc: Use local saves  |  F11: Max size" if offline_only else "Tab: Next field  |  Enter: Submit  |  Esc: Use local saves  |  F11: Max size"
+        draw_text(screen, footer, small_font, MUTED_TEXT, (left, height - 58))
         draw_version_label(screen, small_font)
         pygame.display.flip()
         clock.tick(60)
@@ -1632,9 +1774,13 @@ def change_password_modal(screen, clock):
 
 
 def configure_player_storage(screen, clock):
+    ensure_menu_music()
     server_url = configured_server_url()
     if not server_url:
-        return None
+        player_storage["remote_enabled"] = False
+        player_storage["offline_warning"] = "OFFLINE: online progress will not be saved"
+        auth_result = auth_screen(screen, clock, initial_message="Server is not configured. Choose offline only play.")
+        return "quit" if auth_result == "quit" else None
     player_storage["server_url"] = server_url
     player_storage["api_key"] = configured_api_key()
     try:
@@ -1642,12 +1788,9 @@ def configure_player_storage(screen, clock):
     except (OSError, error.URLError, TimeoutError, json.JSONDecodeError):
         logger.exception("Server health check failed; using local player data")
         player_storage["remote_enabled"] = False
-        return message_modal(
-            screen,
-            clock,
-            "SERVER UNAVAILABLE",
-            "Could not contact Type Fighter Server. The game will use local player data.",
-        )
+        player_storage["offline_warning"] = "OFFLINE: online progress will not be saved"
+        auth_result = auth_screen(screen, clock, initial_message="Could not contact Type Fighter Server. Choose offline only play.")
+        return "quit" if auth_result == "quit" else None
     try:
         server_version = remote_server_version()
     except (OSError, error.URLError, TimeoutError, json.JSONDecodeError):
@@ -1667,6 +1810,10 @@ def configure_player_storage(screen, clock):
         if auth_result == "quit":
             return "quit"
         return None
+    try:
+        load_remote_game_config()
+    except (OSError, error.URLError, TimeoutError, json.JSONDecodeError):
+        logger.exception("Server game config load failed; using cached/default config")
     if not try_saved_session():
         auth_result = auth_screen(screen, clock)
         if auth_result == "quit":
@@ -1674,6 +1821,7 @@ def configure_player_storage(screen, clock):
         if not auth_result:
             return None
     player_storage["remote_enabled"] = True
+    player_storage["offline_warning"] = ""
     logger.info("Remote player storage enabled for {}", (player_storage.get("account") or {}).get("email", "unknown"))
     return None
 
@@ -1738,6 +1886,38 @@ def draw_centered_wrapped_text(surface, text, font, color, rect, line_spacing=6)
         y += line_height
 
 
+def draw_default_achievement_image(surface, rect):
+    pygame.draw.rect(surface, (16, 28, 52), rect, border_radius=8)
+    center = rect.center
+    radius = max(20, min(rect.width, rect.height) // 3)
+    ribbon_width = max(14, rect.width // 9)
+    ribbon_top = center[1] + radius // 2
+    left_ribbon = [
+        (center[0] - ribbon_width - 8, ribbon_top),
+        (center[0] - 4, ribbon_top),
+        (center[0] - 10, rect.bottom - 22),
+        (center[0] - ribbon_width - 18, rect.bottom - 8),
+    ]
+    right_ribbon = [
+        (center[0] + 4, ribbon_top),
+        (center[0] + ribbon_width + 8, ribbon_top),
+        (center[0] + ribbon_width + 18, rect.bottom - 8),
+        (center[0] + 10, rect.bottom - 22),
+    ]
+    pygame.draw.polygon(surface, (64, 118, 196), left_ribbon)
+    pygame.draw.polygon(surface, (82, 151, 224), right_ribbon)
+    pygame.draw.circle(surface, (236, 192, 82), center, radius)
+    pygame.draw.circle(surface, (255, 226, 122), center, radius - max(5, radius // 8), 3)
+    points = []
+    inner = radius * 0.38
+    outer = radius * 0.68
+    for index in range(10):
+        angle = -math.pi / 2 + index * math.pi / 5
+        distance = outer if index % 2 == 0 else inner
+        points.append((center[0] + math.cos(angle) * distance, center[1] + math.sin(angle) * distance))
+    pygame.draw.polygon(surface, (255, 248, 208), points)
+
+
 def load_ui_image(path):
     cache_key = str(path)
     if cache_key in ui_image_cache:
@@ -1770,6 +1950,32 @@ def play_ui_sound(sound):
         sound.play()
 
 
+def ensure_menu_music():
+    global menu_music_channel
+    if not pygame.mixer.get_init():
+        return
+    if menu_music_channel is not None and menu_music_channel.get_busy():
+        return
+    menu_music = load_ui_sound(BASE_DIR / "sfx" / "game_intro_music.wav", 0.35)
+    if menu_music is not None:
+        menu_music_channel = menu_music.play(loops=-1, fade_ms=900)
+
+
+def stop_menu_music(fade_ms=700):
+    global menu_music_channel
+    if menu_music_channel is None:
+        return
+    if fade_ms:
+        menu_music_channel.fadeout(fade_ms)
+    else:
+        menu_music_channel.stop()
+    menu_music_channel = None
+
+
+def play_menu_beep():
+    play_ui_sound(load_ui_sound(BASE_DIR / "sfx" / "beep.wav", 0.45))
+
+
 def load_json_dict(path):
     try:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -1798,8 +2004,168 @@ def resolve_reward_image_path(lesson_dir, image_name):
     return None
 
 
-def collect_new_achievement_modals(player, lesson_number):
-    return []
+def resolve_achievement_image_path(image_name):
+    if not image_name:
+        return None
+    raw_name = str(image_name).strip()
+    if not raw_name:
+        return None
+    raw_path = Path(raw_name)
+    if raw_path.is_absolute() and raw_path.exists():
+        return raw_path
+    names = [raw_path]
+    if raw_path.suffix == "":
+        names.append(Path(f"{raw_name}.png"))
+    for name in names:
+        for base in (
+            BASE_DIR / "gfx" / "achievements",
+            BASE_DIR / "gfx",
+            BASE_DIR,
+        ):
+            candidate = base / name
+            if candidate.exists():
+                return candidate
+    return None
+
+
+def disabled_image_name(image_name):
+    if not isinstance(image_name, str) or not image_name.strip():
+        return ""
+    path = Path(image_name.strip())
+    suffix = path.suffix or ".png"
+    stem = path.stem if path.suffix else path.name
+    return str(path.with_name(f"{stem}_disabled{suffix}"))
+
+
+def achievement_by_id(achievement_id):
+    for achievement in ACHIEVEMENTS:
+        if achievement.get("id") == achievement_id:
+            return achievement
+    return None
+
+
+def achievement_modal_payload(achievement):
+    reward_credits = int(achievement.get("reward_credits", 0) or 0)
+    score = int(achievement.get("score", 0) or 0)
+    reward_bits = []
+    if reward_credits:
+        reward_bits.append(f"+{reward_credits} credits")
+    if score:
+        reward_bits.append(f"+{score} Score")
+    text = str(achievement.get("text", "")).strip()
+    if reward_bits:
+        text = f"{text}\n\nReward: {', '.join(reward_bits)}" if text else f"Reward: {', '.join(reward_bits)}"
+    return {
+        "kind": "achievement",
+        "title": str(achievement.get("name", "Achievement Unlocked")).strip() or "Achievement Unlocked",
+        "text": text,
+        "image_path": resolve_achievement_image_path(achievement.get("image", "")),
+    }
+
+
+def award_achievement(player, achievement_id):
+    achievement = achievement_by_id(achievement_id)
+    if achievement is None:
+        return None
+    current = normalize_achievement_awards(player.get("achievements", {}))
+    if current.get(achievement_id):
+        return None
+    current[achievement_id] = True
+    player["achievements"] = current
+    player["credits"] = player_credits(player) + int(achievement.get("reward_credits", 0) or 0)
+    lifetime_score = player.get("lifetime_score", 0)
+    if not isinstance(lifetime_score, int):
+        lifetime_score = 0
+    player["lifetime_score"] = max(0, lifetime_score) + int(achievement.get("score", 0) or 0)
+    if achievement_id == "fully_upgraded":
+        player["shield_charges"] = min(player_shield_max_charges(player), max(player.get("shield_charges", 0), 6))
+    return achievement_modal_payload(achievement)
+
+
+def record_latest_mission_achievement_progress(player, lesson_number):
+    stats = player.get("last_mission_stats")
+    if not isinstance(stats, dict):
+        return
+    if stats.get("lesson_number") != lesson_number or not stats.get("won"):
+        return
+    if stats.get("hits_taken", 0) == 0 and stats.get("inaccurate_inputs", 0) == 0:
+        perfect_lessons = set(normalize_lesson_number_list(player.get("perfect_lessons", [])))
+        perfect_lessons.add(lesson_number)
+        player["perfect_lessons"] = sorted(perfect_lessons)
+
+
+def purchased_upgrade_id_set(player):
+    purchased = set(normalize_string_list(player.get("purchased_upgrade_ids", [])))
+    purchased.update(upgrade_ids(player))
+    if player_lives(player) > STARTING_LIVES:
+        purchased.add("extra_life")
+    if player.get("shield_charges", 0) > 0:
+        purchased.add("shield_charge")
+    return purchased
+
+
+def achievement_requirements_met(player, lesson_number=None):
+    met = []
+    rank = player_rank(player)
+    rank_requirements = (
+        ("private_rank", "Private"),
+        ("lieutenant_rank", "Lieutenant"),
+        ("captain_rank", "Captain"),
+        ("major_rank", "Major"),
+    )
+    for achievement_id, required_rank in rank_requirements:
+        if rank_at_least(player, required_rank):
+            met.append(achievement_id)
+
+    perfect_lessons = set(normalize_lesson_number_list(player.get("perfect_lessons", [])))
+    if len(perfect_lessons) >= 5:
+        met.append("seeking_perfection")
+    if len(perfect_lessons) >= 20:
+        met.append("near_perfection")
+    if all(lesson["number"] in perfect_lessons for lesson in LESSONS[:36]):
+        met.append("totally_perfect")
+
+    if player_lives(player) >= player_limits.MAX_PLAYER_LIVES:
+        met.append("living_forever")
+
+    upgrade_catalog_ids = {upgrade["id"] for upgrade in UPGRADE_CATALOG}
+    if upgrade_catalog_ids and upgrade_catalog_ids.issubset(purchased_upgrade_id_set(player)):
+        met.append("fully_upgraded")
+
+    completed = set(player.get("completed_lessons", []))
+    if all(lesson["number"] in completed for lesson in LESSONS[:36]):
+        met.append("typing_master")
+
+    if player.get("sold_lives", 0) >= 50 and player.get("sold_shields", 0) >= 50:
+        met.append("quartermaster")
+
+    stats = player.get("last_mission_stats")
+    if (
+        isinstance(stats, dict)
+        and stats.get("lesson_number") == lesson_number
+        and stats.get("won")
+        and stats.get("starting_shield_charges", 0) >= 6
+        and stats.get("ending_shield_charges", 0) == 0
+        and stats.get("hits_taken", 0) == 0
+    ):
+        met.append("shields_up")
+
+    return met
+
+
+def collect_new_achievement_modals(player, lesson_number=None):
+    if lesson_number is not None:
+        record_latest_mission_achievement_progress(player, lesson_number)
+    else:
+        stats = player.get("last_mission_stats")
+        if isinstance(stats, dict) and isinstance(stats.get("lesson_number"), int):
+            record_latest_mission_achievement_progress(player, stats["lesson_number"])
+    queued = []
+    for achievement_id in achievement_requirements_met(player, lesson_number):
+        modal = award_achievement(player, achievement_id)
+        if modal is not None:
+            queued.append(modal)
+    return queued
 
 
 def collect_lesson_unlock_modals(lesson_number):
@@ -1827,10 +2193,163 @@ def collect_lesson_unlock_modals(lesson_number):
 
 def collect_mission_reward_modals(player, lesson_number, include_unlocks=True):
     queue = []
-    queue.extend(collect_new_achievement_modals(player, lesson_number))
     if include_unlocks:
         queue.extend(collect_lesson_unlock_modals(lesson_number))
+    queue.extend(collect_new_achievement_modals(player, lesson_number))
     return queue
+
+
+def draw_achievement_tile(screen, rect, achievement, earned, title_font, body_font):
+    fill = (18, 30, 55) if earned else (12, 18, 32)
+    border = ACCENT if earned else (52, 62, 82)
+    title_color = TEXT_COLOR if earned else MUTED_TEXT
+    text_color = MUTED_TEXT if earned else (92, 102, 126)
+    pygame.draw.rect(screen, fill, rect, border_radius=8)
+    pygame.draw.rect(screen, border, rect, 2, border_radius=8)
+
+    image_name = achievement.get("image", "")
+    if not earned:
+        image_name = disabled_image_name(image_name)
+    image = load_ui_image(resolve_achievement_image_path(image_name))
+    image_rect = pygame.Rect(rect.x + 16, rect.y + 16, 84, 84)
+    if image is not None:
+        scaled = pygame.transform.smoothscale(image, image_rect.size)
+        screen.blit(scaled, image_rect)
+    else:
+        draw_default_achievement_image(screen, image_rect)
+        if not earned:
+            dim = pygame.Surface(image_rect.size, pygame.SRCALPHA)
+            dim.fill((0, 0, 0, 120))
+            screen.blit(dim, image_rect)
+
+    text_left = image_rect.right + 16
+    status = "Earned" if earned else "Locked"
+    draw_text(screen, str(achievement.get("name", "Achievement")), title_font, title_color, (text_left, rect.y + 18))
+    draw_text(screen, status, body_font, ACCENT if earned else MUTED_TEXT, (text_left, rect.y + 48))
+    text_rect = pygame.Rect(text_left, rect.y + 76, rect.right - text_left - 16, rect.bottom - rect.y - 88)
+    lines = wrap_plain_text(str(achievement.get("text", "")), body_font, text_rect.width)
+    y = text_rect.y
+    for line in lines[:2]:
+        rendered = body_font.render(line, True, text_color)
+        screen.blit(rendered, (text_rect.x, y))
+        y += body_font.get_linesize()
+
+
+def achievements_modal_loop(screen, clock, player):
+    title_font = pygame.font.SysFont("arial", 38, bold=True)
+    tile_title_font = pygame.font.SysFont("arial", 20, bold=True)
+    body_font = pygame.font.SysFont("arial", 16)
+    button_font = pygame.font.SysFont("arial", 22, bold=True)
+    earned_ids = set(normalized_achievement_ids(player.get("achievements", [])))
+    scroll = 0
+    close_rect = pygame.Rect(0, 0, 0, 0)
+    background = screen.copy()
+    achievement_rects = []
+    hovered_achievement_id = None
+    dragging_scrollbar = False
+    scrollbar_drag_offset = 0
+    track_rect = pygame.Rect(0, 0, 0, 0)
+    thumb_rect = None
+    visible_rows = 1
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "quit"
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE):
+                    return None
+                if event.key in (pygame.K_DOWN, pygame.K_s):
+                    scroll += 1
+                    play_menu_beep()
+                if event.key in (pygame.K_UP, pygame.K_w):
+                    scroll -= 1
+                    play_menu_beep()
+            if event.type == pygame.MOUSEWHEEL:
+                scroll -= event.y
+                play_menu_beep()
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if thumb_rect is not None and thumb_rect.collidepoint(event.pos):
+                    dragging_scrollbar = True
+                    scrollbar_drag_offset = event.pos[1] - thumb_rect.y
+                    continue
+                if close_rect.collidepoint(event.pos):
+                    return None
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                dragging_scrollbar = False
+            if event.type == pygame.MOUSEMOTION and dragging_scrollbar:
+                new_scroll = drag_scroll_index(
+                    event.pos[1],
+                    track_rect,
+                    thumb_rect.height if thumb_rect is not None else 36,
+                    len(ACHIEVEMENTS),
+                    visible_rows,
+                    scrollbar_drag_offset,
+                )
+                if new_scroll != scroll:
+                    scroll = new_scroll
+                    play_menu_beep()
+            elif event.type == pygame.MOUSEMOTION:
+                next_hovered_id = None
+                for achievement_id, rect in achievement_rects:
+                    if rect.collidepoint(event.pos):
+                        next_hovered_id = achievement_id
+                        break
+                if next_hovered_id is not None and next_hovered_id != hovered_achievement_id:
+                    play_menu_beep()
+                hovered_achievement_id = next_hovered_id
+
+        screen = pygame.display.get_surface()
+        width, height = screen.get_size()
+        if background.get_size() == screen.get_size():
+            screen.blit(background, (0, 0))
+        else:
+            screen.fill(BG_COLOR)
+        draw_modal_backdrop(screen)
+        modal_rect = pygame.Rect(0, 0, min(980, width - 80), min(760, height - 48))
+        modal_rect.center = (width / 2, height / 2)
+        pygame.draw.rect(screen, (10, 18, 34), modal_rect, border_radius=8)
+        pygame.draw.rect(screen, ACCENT, modal_rect, 2, border_radius=8)
+
+        draw_text(screen, "ACHIEVEMENTS", title_font, TEXT_COLOR, (modal_rect.x + 30, modal_rect.y + 24))
+        earned_label = f"{len(earned_ids)}/{len(ACHIEVEMENTS)} earned"
+        earned_surface = body_font.render(earned_label, True, MUTED_TEXT)
+        screen.blit(earned_surface, earned_surface.get_rect(right=modal_rect.right - 30, y=modal_rect.y + 42))
+
+        tile_gap = 12
+        tile_height = 124
+        list_top = modal_rect.y + 88
+        list_bottom = modal_rect.bottom - 82
+        visible_rows = max(1, (list_bottom - list_top + tile_gap) // (tile_height + tile_gap))
+        max_scroll = max(0, len(ACHIEVEMENTS) - visible_rows)
+        scroll = max(0, min(scroll, max_scroll))
+        tile_width = modal_rect.width - 60
+        clip_rect = pygame.Rect(modal_rect.x + 30, list_top, tile_width, list_bottom - list_top)
+        achievement_rects = []
+        previous_clip = screen.get_clip()
+        screen.set_clip(clip_rect)
+        for visible_index, achievement in enumerate(ACHIEVEMENTS[scroll : scroll + visible_rows]):
+            tile_rect = pygame.Rect(clip_rect.x, list_top + visible_index * (tile_height + tile_gap), tile_width, tile_height)
+            achievement_id = achievement.get("id")
+            achievement_rects.append((achievement_id, tile_rect))
+            draw_achievement_tile(screen, tile_rect, achievement, achievement_id in earned_ids, tile_title_font, body_font)
+        screen.set_clip(previous_clip)
+
+        if max_scroll > 0:
+            track_rect = pygame.Rect(modal_rect.right - 20, list_top, 6, list_bottom - list_top)
+            thumb_height = max(36, int(track_rect.height * visible_rows / len(ACHIEVEMENTS)))
+            thumb_y = track_rect.y + int((track_rect.height - thumb_height) * scroll / max_scroll)
+            thumb_rect = pygame.Rect(track_rect.x, thumb_y, track_rect.width, thumb_height)
+            pygame.draw.rect(screen, (31, 42, 66), track_rect, border_radius=3)
+            pygame.draw.rect(screen, ACCENT, thumb_rect, border_radius=3)
+        else:
+            thumb_rect = None
+            dragging_scrollbar = False
+
+        close_rect = pygame.Rect(modal_rect.right - 160, modal_rect.bottom - 58, 130, 40)
+        draw_modal_button(screen, close_rect, "Close", button_font, True, True)
+        pygame.display.flip()
+        clock.tick(60)
 
 
 def reward_modal_loop(screen, clock, reward, background):
@@ -1839,7 +2358,7 @@ def reward_modal_loop(screen, clock, reward, background):
     button_font = pygame.font.SysFont("arial", 24, bold=True)
     ok_rect = pygame.Rect(0, 0, 0, 0)
     image = load_ui_image(reward.get("image_path")) if reward.get("image_path") else None
-    if reward.get("kind") == "unlock":
+    if reward.get("kind") in ("unlock", "achievement"):
         play_ui_sound(load_ui_sound(BASE_DIR / "sfx" / "unlock.wav", 0.9))
     while True:
         for event in pygame.event.get():
@@ -1873,6 +2392,8 @@ def reward_modal_loop(screen, clock, reward, background):
         if image is not None:
             scaled = pygame.transform.smoothscale(image, (image_rect.width, image_rect.height))
             screen.blit(scaled, image_rect)
+        elif reward.get("kind") == "achievement":
+            draw_default_achievement_image(screen, image_rect)
         else:
             pygame.draw.rect(screen, (20, 32, 58), image_rect, border_radius=8)
             pygame.draw.rect(screen, (65, 82, 120), image_rect, 2, border_radius=8)
@@ -2005,7 +2526,7 @@ def draw_upgrades_modal(screen, title_font, body_font, small_font, player):
             sell_rect = pygame.Rect(action_rect.x, action_rect.y, button_width, action_rect.height)
             buy_rect = pygame.Rect(action_rect.right - button_width, action_rect.y, button_width, action_rect.height)
             sell_enabled = upgrade_can_sell(player, upgrade)
-            buy_enabled = not (upgrade["id"] == "extra_life" and player_lives(player) >= MAX_PLAYER_LIVES)
+            buy_enabled = not (upgrade["id"] == "extra_life" and player_lives(player) >= player_limits.MAX_PLAYER_LIVES)
             draw_sell_button(screen, sell_rect, small_font, sell_rect.collidepoint(mouse_pos), sell_enabled)
             draw_buy_button(screen, buy_rect, small_font, buy_rect.collidepoint(mouse_pos) and buy_enabled, buy_enabled)
             if sell_enabled:
@@ -2154,16 +2675,28 @@ def sell_upgrade_modal(screen, clock, upgrade, player):
                 if event.key == pygame.K_ESCAPE:
                     return None
                 if event.key in (pygame.K_UP, pygame.K_w):
-                    quantity = min(max_quantity, quantity + 1)
+                    new_quantity = min(max_quantity, quantity + 1)
+                    if new_quantity != quantity:
+                        quantity = new_quantity
+                        play_menu_beep()
                 if event.key in (pygame.K_DOWN, pygame.K_s):
-                    quantity = max(1, quantity - 1)
+                    new_quantity = max(1, quantity - 1)
+                    if new_quantity != quantity:
+                        quantity = new_quantity
+                        play_menu_beep()
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     return quantity
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if up_rect.collidepoint(event.pos):
-                    quantity = min(max_quantity, quantity + 1)
+                    new_quantity = min(max_quantity, quantity + 1)
+                    if new_quantity != quantity:
+                        quantity = new_quantity
+                        play_menu_beep()
                 elif down_rect.collidepoint(event.pos):
-                    quantity = max(1, quantity - 1)
+                    new_quantity = max(1, quantity - 1)
+                    if new_quantity != quantity:
+                        quantity = new_quantity
+                        play_menu_beep()
                 elif sell_rect.collidepoint(event.pos):
                     return quantity
                 elif cancel_rect.collidepoint(event.pos):
@@ -2214,6 +2747,9 @@ def color_choice_modal(screen, clock, upgrade):
     small_font = pygame.font.SysFont("arial", 18)
     selected = 0
     color_rects = []
+    hovered_color_index = None
+    ignore_hover_until_mouse_move = False
+    hover_lock_mouse_pos = None
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -2223,14 +2759,41 @@ def color_choice_modal(screen, clock, upgrade):
                     return None
                 if event.key in (pygame.K_LEFT, pygame.K_a):
                     selected = (selected - 1) % len(UPGRADE_COLORS)
+                    play_menu_beep()
+                    ignore_hover_until_mouse_move = True
+                    hover_lock_mouse_pos = pygame.mouse.get_pos()
                 if event.key in (pygame.K_RIGHT, pygame.K_d):
                     selected = (selected + 1) % len(UPGRADE_COLORS)
+                    play_menu_beep()
+                    ignore_hover_until_mouse_move = True
+                    hover_lock_mouse_pos = pygame.mouse.get_pos()
                 if event.key in (pygame.K_UP, pygame.K_w):
                     selected = (selected - 4) % len(UPGRADE_COLORS)
+                    play_menu_beep()
+                    ignore_hover_until_mouse_move = True
+                    hover_lock_mouse_pos = pygame.mouse.get_pos()
                 if event.key in (pygame.K_DOWN, pygame.K_s):
                     selected = (selected + 4) % len(UPGRADE_COLORS)
+                    play_menu_beep()
+                    ignore_hover_until_mouse_move = True
+                    hover_lock_mouse_pos = pygame.mouse.get_pos()
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     return UPGRADE_COLORS[selected][0]
+            if event.type == pygame.MOUSEMOTION:
+                if ignore_hover_until_mouse_move and event.pos == hover_lock_mouse_pos:
+                    continue
+                ignore_hover_until_mouse_move = False
+                next_hovered_color = None
+                for index, rect in enumerate(color_rects):
+                    if rect.collidepoint(event.pos):
+                        next_hovered_color = index
+                        break
+                if next_hovered_color is not None and next_hovered_color != hovered_color_index:
+                    hovered_color_index = next_hovered_color
+                    selected = next_hovered_color
+                    play_menu_beep()
+                elif next_hovered_color is None:
+                    hovered_color_index = None
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 for index, rect in enumerate(color_rects):
                     if rect.collidepoint(event.pos):
@@ -2269,6 +2832,7 @@ def upgrades_modal_loop(screen, clock, players, player):
     small_font = pygame.font.SysFont("arial", 20)
     action_rects = []
     close_rect = pygame.Rect(0, 0, 0, 0)
+    hovered_action = None
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -2288,6 +2852,17 @@ def upgrades_modal_loop(screen, clock, players, player):
                         if result == "quit":
                             return "quit"
                         break
+            if event.type == pygame.MOUSEMOTION:
+                next_hovered_action = None
+                for action, index, rect in action_rects:
+                    if rect.collidepoint(event.pos):
+                        next_hovered_action = (action, index)
+                        break
+                if close_rect.collidepoint(event.pos):
+                    next_hovered_action = ("close", -1)
+                if next_hovered_action is not None and next_hovered_action != hovered_action:
+                    play_menu_beep()
+                hovered_action = next_hovered_action
 
         screen = pygame.display.get_surface()
         action_rects, close_rect = draw_upgrades_modal(screen, title_font, body_font, small_font, player)
@@ -2332,6 +2907,7 @@ def attempt_upgrade_sale(screen, clock, players, player, upgrade):
 
 
 def menu_loop(screen, clock, players, player):
+    ensure_menu_music()
     title_font = pygame.font.SysFont("arial", 54, bold=True)
     item_font = pygame.font.SysFont("arial", 30, bold=True)
     body_font = pygame.font.SysFont("arial", 22)
@@ -2341,10 +2917,21 @@ def menu_loop(screen, clock, players, player):
     stars = create_star_field()
     mission_rects = []
     upgrades_button_rect = None
+    achievements_button_rect = None
     upgrades_image = load_ui_image(BASE_DIR / "gfx" / "upgrades" / "upgrades.png")
+    achievements_image = load_ui_image(BASE_DIR / "gfx" / "achievements" / "achievements.png")
     mock_battle = create_mock_battle()
     last_wheel_scroll_time = 0
-    pending_reward_modals = []
+    scrollbar_rect = pygame.Rect(0, 0, 0, 0)
+    scrollbar_thumb = None
+    scrollbar_drag_offset = 0
+    dragging_scrollbar = False
+    visible_rows = 1
+    ignore_hover_until_mouse_move = False
+    hover_lock_mouse_pos = None
+    pending_reward_modals = collect_new_achievement_modals(player)
+    if pending_reward_modals:
+        save_players(players)
 
     while True:
         if player_storage.get("warning"):
@@ -2355,6 +2942,9 @@ def menu_loop(screen, clock, players, player):
         upgrades_available = 2 in set(player.get("completed_lessons", []))
         if not upgrades_available:
             upgrades_button_rect = None
+        achievements_available = achievement_count(player) > 0
+        if not achievements_available:
+            achievements_button_rect = None
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -2368,8 +2958,14 @@ def menu_loop(screen, clock, players, player):
                     return "players"
                 if event.key in (pygame.K_DOWN, pygame.K_s):
                     selected = (selected + 1) % len(LESSONS)
+                    play_menu_beep()
+                    ignore_hover_until_mouse_move = True
+                    hover_lock_mouse_pos = pygame.mouse.get_pos()
                 if event.key in (pygame.K_UP, pygame.K_w):
                     selected = (selected - 1) % len(LESSONS)
+                    play_menu_beep()
+                    ignore_hover_until_mouse_move = True
+                    hover_lock_mouse_pos = pygame.mouse.get_pos()
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     if selected < unlocked_count:
                         completed_index = selected
@@ -2381,6 +2977,7 @@ def menu_loop(screen, clock, players, player):
                             return "quit"
                         if result == "won":
                             mark_lesson_complete(player, lesson_number)
+                            mark_lesson_perfect_if_applicable(player, lesson_number)
                             pending_reward_modals.extend(
                                 collect_mission_reward_modals(player, lesson_number, not was_completed)
                             )
@@ -2388,6 +2985,16 @@ def menu_loop(screen, clock, players, player):
                             selected = min(completed_index + 1, unlocked_lesson_count(player) - 1)
                         pygame.event.clear((pygame.KEYDOWN, pygame.KEYUP))
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if scrollbar_thumb is not None and scrollbar_thumb.collidepoint(event.pos):
+                    dragging_scrollbar = True
+                    scrollbar_drag_offset = event.pos[1] - scrollbar_thumb.y
+                    continue
+                if achievements_button_rect is not None and achievements_button_rect.collidepoint(event.pos):
+                    result = achievements_modal_loop(screen, clock, player)
+                    if result == "quit":
+                        return "quit"
+                    pygame.event.clear((pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP))
+                    continue
                 if upgrades_button_rect is not None and upgrades_button_rect.collidepoint(event.pos):
                     result = upgrades_modal_loop(screen, clock, players, player)
                     if result == "quit":
@@ -2406,6 +3013,7 @@ def menu_loop(screen, clock, players, player):
                                 return "quit"
                             if result == "won":
                                 mark_lesson_complete(player, lesson_number)
+                                mark_lesson_perfect_if_applicable(player, lesson_number)
                                 pending_reward_modals.extend(
                                     collect_mission_reward_modals(player, lesson_number, not was_completed)
                                 )
@@ -2413,10 +3021,36 @@ def menu_loop(screen, clock, players, player):
                                 selected = min(index + 1, unlocked_lesson_count(player) - 1)
                             pygame.event.clear((pygame.KEYDOWN, pygame.KEYUP, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP))
                         break
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                dragging_scrollbar = False
+            if event.type == pygame.MOUSEMOTION and dragging_scrollbar:
+                first_visible = drag_scroll_index(
+                    event.pos[1],
+                    scrollbar_rect,
+                    scrollbar_thumb.height if scrollbar_thumb is not None else 28,
+                    len(LESSONS),
+                    visible_rows,
+                    scrollbar_drag_offset,
+                )
+                new_selected = min(len(LESSONS) - 1, first_visible + max(0, visible_rows - 1))
+                if new_selected != selected:
+                    selected = new_selected
+                    play_menu_beep()
+            elif event.type == pygame.MOUSEMOTION:
+                if ignore_hover_until_mouse_move and event.pos == hover_lock_mouse_pos:
+                    continue
+                ignore_hover_until_mouse_move = False
+                for index, rect in mission_rects:
+                    if rect.collidepoint(event.pos):
+                        if index != selected:
+                            selected = index
+                            play_menu_beep()
+                        break
             if event.type == pygame.MOUSEWHEEL:
                 step, last_wheel_scroll_time = should_apply_menu_wheel(event, last_wheel_scroll_time)
                 if step:
                     selected = (selected + step) % len(LESSONS)
+                    play_menu_beep()
 
         screen = pygame.display.get_surface()
         width, height = screen.get_size()
@@ -2426,8 +3060,16 @@ def menu_loop(screen, clock, players, player):
         screen.fill(BG_COLOR)
         draw_star_field(screen, stars)
         update_and_draw_mock_battle(screen, mock_battle, clock, content_left, content_left + content_width)
+        achievements_button_rect = None
         if upgrades_available:
             upgrades_button_rect = pygame.Rect(content_left + content_width - 80, 128, 80, 80)
+            if achievements_available:
+                achievements_button_rect = pygame.Rect(upgrades_button_rect.x - 92, upgrades_button_rect.y, 80, 80)
+                if achievements_image is not None:
+                    draw_square_image_button(screen, achievements_button_rect, achievements_image)
+                else:
+                    draw_default_achievement_image(screen, achievements_button_rect)
+                    pygame.draw.rect(screen, ACCENT, achievements_button_rect, 2, border_radius=8)
             draw_square_image_button(screen, upgrades_button_rect, upgrades_image)
         else:
             upgrades_button_rect = None
@@ -2478,9 +3120,28 @@ def menu_loop(screen, clock, players, player):
             summary = "Locked: complete the previous lesson first." if is_locked else lesson["summary"]
             draw_text(screen, lesson["title"], item_font, title_color, (x, y - 4))
             draw_text(screen, summary, body_font, summary_color, (x, y + 36))
+            if lesson["number"] in set(normalize_lesson_number_list(player.get("perfect_lessons", []))):
+                marker_center = (card_rect.right - 34, card_rect.centery)
+                marker_radius = 15
+                marker_points = [
+                    (marker_center[0], marker_center[1] - marker_radius),
+                    (marker_center[0] + marker_radius, marker_center[1]),
+                    (marker_center[0], marker_center[1] + marker_radius),
+                    (marker_center[0] - marker_radius, marker_center[1]),
+                ]
+                pygame.draw.polygon(screen, (255, 190, 68), marker_points)
+                pygame.draw.polygon(screen, (255, 236, 156), marker_points, 2)
+                marker_font = pygame.font.SysFont("arial", 18, bold=True)
+                marker_label = marker_font.render("P", True, (42, 28, 8))
+                label_rect = marker_label.get_rect(center=marker_center)
+                label_rect.centerx += 1
+                label_rect.centery += 1
+                screen.blit(marker_label, label_rect)
 
         scrollbar_rect = pygame.Rect(content_left + content_width - 12, list_top - 22, 8, list_height)
-        draw_scrollbar(screen, scrollbar_rect, len(LESSONS), visible_rows, first_visible)
+        scrollbar_thumb = draw_scrollbar(screen, scrollbar_rect, len(LESSONS), visible_rows, first_visible)
+        if scrollbar_thumb is None:
+            dragging_scrollbar = False
 
         draw_text(screen, "B/Esc: Players  |  F11: Max size  |  Q/E: Quit", small_font, MUTED_TEXT, (text_left + 4, height - 58))
         draw_version_label(screen, small_font)
@@ -2516,6 +3177,8 @@ def set_windows_app_id():
 
 
 def main():
+    load_cached_config(GAME_CONFIG_CACHE_PATH)
+    apply_game_settings()
     setup_logging()
     set_windows_app_id()
     pygame.init()
@@ -2553,6 +3216,7 @@ def main():
         raise
     finally:
         logger.info("Type Fighter client shutting down")
+        stop_menu_music(0)
         pygame.quit()
 
 
