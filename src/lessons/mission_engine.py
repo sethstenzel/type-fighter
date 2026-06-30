@@ -3200,9 +3200,9 @@ class MissionEngine:
         overlay.fill((0, 0, 0, 0))
         center = (int(ring.center.x), int(ring.center.y))
         alpha = max(0, min(255, TIME_RING_ALPHA))
-        pygame.draw.circle(overlay, (*TIME_RING_COLOR, alpha), center, radius, 14)
+        pygame.draw.circle(overlay, (*TIME_RING_COLOR, alpha), center, radius, 10)
         if radius > 24:
-            pygame.draw.circle(overlay, (*TIME_RING_INNER_COLOR, max(0, alpha - 35)), center, radius - 20, 6)
+            pygame.draw.circle(overlay, (*TIME_RING_INNER_COLOR, max(0, alpha - 35)), center, radius - 18, 4)
         self.screen.blit(overlay, (0, 0))
 
     def _process_pending_shots(self, now, dt):
