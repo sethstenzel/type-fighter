@@ -3158,7 +3158,7 @@ class MissionEngine:
             bars.append("shield")
         if self.player_time_stop_available:
             bars.append("time_stop")
-        spacing = 170
+        spacing = 200
         start_x = width / 2 - (len(bars) - 1) * spacing / 2
         for index, bar in enumerate(bars):
             center_x = start_x + index * spacing
