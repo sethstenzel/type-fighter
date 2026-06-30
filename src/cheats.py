@@ -107,6 +107,11 @@ def apply_player_cheats(player):
         player["purchased_upgrade_ids"] = []
         player["sold_lives"] = 0
         player["sold_shields"] = 0
+        # Undo all purchases: equipped pod upgrades plus bought lives/charges.
+        player["pod"] = {"color": "blue", "type": "standard", "upgrades": []}
+        player["lives"] = 3
+        player["shield_charges"] = 0
+        player["time_stop_charges"] = 0
         # Clear the last mission's stats too, otherwise the login achievement
         # check would re-mark that lesson's perfect/high-score/quick badge.
         player["last_mission_stats"] = {}

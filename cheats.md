@@ -33,7 +33,7 @@ logged as a warning at startup. Implementation lives in `src/cheats.py`.
 | 7 | Rich | Player credits set to **100,000** | On player select (save) |
 | 8 | Reset high score | Resets the player's high score (lifetime score) to **0** | On player select (save) |
 | 9 | Reset achievements | Clears achievements earned so they can **trigger again** | On player select (save) |
-| 0 | Full reset | Clears credits, score, unlocked levels, achievements, and achievement rewards | On player select (save) |
+| 0 | Full reset | Clears credits, score, unlocked levels, achievements, achievement rewards, and **all purchases** (pod upgrades, extra lives, shield/time-stop charges) | On player select (save) |
 | 10 | Unlock all (save) | Marks every level as **unlocked in the save** (persists after relaunch) | On player select (save) |
 | 11 | Unlock all (run) | Every training mission is **selectable in the menu** for this run only (no save change) | In the mission menu |
 

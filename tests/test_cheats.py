@@ -72,6 +72,11 @@ class CheatTests(unittest.TestCase):
             "high_score_lessons": [1, 2],
             "quick_lessons": [3],
             "last_mission_stats": {"lesson_number": 3, "won": True, "score": 9999},
+            "purchased_upgrade_ids": ["defense_drone"],
+            "pod": {"color": "red", "type": "standard", "upgrades": [{"id": "defense_drone"}]},
+            "lives": 12,
+            "shield_charges": 4,
+            "time_stop_charges": 3,
         }
         cheats.apply_player_cheats(player)
         self.assertEqual(player["completed_lessons"], [])
@@ -82,6 +87,12 @@ class CheatTests(unittest.TestCase):
         self.assertEqual(player["high_score_lessons"], [])
         self.assertEqual(player["quick_lessons"], [])
         self.assertEqual(player["last_mission_stats"], {})
+        # purchases undone
+        self.assertEqual(player["purchased_upgrade_ids"], [])
+        self.assertEqual(player["pod"]["upgrades"], [])
+        self.assertEqual(player["lives"], 3)
+        self.assertEqual(player["shield_charges"], 0)
+        self.assertEqual(player["time_stop_charges"], 0)
 
 
 if __name__ == "__main__":
