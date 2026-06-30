@@ -83,6 +83,18 @@ class BadgeUnlockModalTests(unittest.TestCase):
         self.assertNotIn("High Scorer!", titles)
         self.assertIn("Quick Defender!", titles)
 
+    def test_upgrade_buttons_exist_and_draw(self):
+        # Regression: draw_buy_button/draw_sell_button were undefined, crashing
+        # the upgrades modal on open.
+        import pygame
+
+        pygame.font.init()
+        font = pygame.font.SysFont("arial", 16)
+        surface = pygame.Surface((120, 40))
+        rect = surface.get_rect()
+        game.draw_buy_button(surface, rect, font, True, True)
+        game.draw_sell_button(surface, rect, font, False, False)
+
     def test_wrap_plain_text_handles_newlines(self):
         # Regression: wrap_plain_text was missing, crashing every reward modal.
         import pygame

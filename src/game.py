@@ -1501,6 +1501,32 @@ def draw_square_image_button(screen, rect, image=None):
     pygame.draw.rect(screen, ACCENT, rect, 2, border_radius=8)
 
 
+def draw_buy_button(screen, rect, font, hovered=False, enabled=True):
+    if not enabled:
+        fill, border, color = (12, 17, 28), (35, 42, 62), MUTED_TEXT
+    elif hovered:
+        fill, border, color = (24, 56, 40), (88, 214, 141), TEXT_COLOR
+    else:
+        fill, border, color = (20, 40, 32), (65, 110, 90), TEXT_COLOR
+    pygame.draw.rect(screen, fill, rect, border_radius=6)
+    pygame.draw.rect(screen, border, rect, 2, border_radius=6)
+    label = font.render("Buy", True, color)
+    screen.blit(label, label.get_rect(center=rect.center))
+
+
+def draw_sell_button(screen, rect, font, hovered=False, enabled=True):
+    if not enabled:
+        fill, border, color = (12, 17, 28), (35, 42, 62), MUTED_TEXT
+    elif hovered:
+        fill, border, color = (58, 28, 32), (219, 92, 101), TEXT_COLOR
+    else:
+        fill, border, color = (44, 24, 28), (110, 60, 64), TEXT_COLOR
+    pygame.draw.rect(screen, fill, rect, border_radius=6)
+    pygame.draw.rect(screen, border, rect, 2, border_radius=6)
+    label = font.render("Sell", True, color)
+    screen.blit(label, label.get_rect(center=rect.center))
+
+
 def draw_upgrades_modal(screen, title_font, body_font, small_font, player):
     width, height = screen.get_size()
     draw_modal_backdrop(screen)
