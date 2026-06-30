@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pygame
 import cheats
+import fonts
 import user_settings
 
 from lessons.audio import (
@@ -1746,7 +1747,7 @@ def draw_power_up(screen, power_up, now):
         pygame.draw.polygon(surface, (226, 255, 235), points, 3)
 
     label_text = " ".join(display_key(key) for key in power_up.letters)
-    label_font = pygame.font.SysFont("arial", 24, bold=True)
+    label_font = fonts.get_font(24, bold=True)
     render_inline_center(surface, label_text, label_font, label_color, center)
 
     if power_up.progress:
@@ -1781,7 +1782,7 @@ def draw_final_boss(screen, final_boss, final_boss_image=None):
         points = polygon_points(final_boss.pos, final_boss.radius, 6, final_boss.rotation - math.pi / 2)
         pygame.draw.polygon(screen, FINAL_BOSS_COLOR, points)
         pygame.draw.polygon(screen, (229, 214, 255), points, 3)
-    label_font = pygame.font.SysFont("arial", 46, bold=True)
+    label_font = fonts.get_font(46, bold=True)
     render_key_label(screen, final_boss.letter, label_font, (8, 10, 18), final_boss.pos, final_boss.radius * 1.25)
 
 
@@ -1986,9 +1987,9 @@ def draw_end_screen(
     bonus_points=0,
     level_time_ms=0,
 ):
-    title_font = pygame.font.SysFont("arial", 56, bold=True)
-    body_font = pygame.font.SysFont("arial", 24)
-    small_font = pygame.font.SysFont("arial", 20)
+    title_font = fonts.get_font(56, bold=True)
+    body_font = fonts.get_font(24)
+    small_font = fonts.get_font(20)
     title = "MISSION COMPLETE" if won else "MISSION FAILED"
     destroyed_count = int(min(destroyed, drone_target))
     accuracy_inputs = accurate_inputs + inaccurate_inputs
@@ -2151,9 +2152,9 @@ def save_mission_settings(player, settings):
 
 
 def mission_settings_modal(screen, clock, player, settings, unlocks, on_button_press=None):
-    title_font = pygame.font.SysFont("arial", 40, bold=True)
-    body_font = pygame.font.SysFont("arial", 23)
-    small_font = pygame.font.SysFont("arial", 16)
+    title_font = fonts.get_font(40, bold=True)
+    body_font = fonts.get_font(23)
+    small_font = fonts.get_font(16)
     controls = {}
     dragging_slider = False
     background = screen.copy()
@@ -2221,10 +2222,10 @@ def draw_mission_briefing_modal(screen, lesson_number, instructions_text, hint_i
     overlay.fill((2, 5, 13, 210))
     screen.blit(overlay, (0, 0))
 
-    title_font = pygame.font.SysFont("arial", 42, bold=True)
-    body_font = pygame.font.SysFont("arial", 21)
-    hint_font = pygame.font.SysFont("arial", 17)
-    button_font = pygame.font.SysFont("arial", 26, bold=True)
+    title_font = fonts.get_font(42, bold=True)
+    body_font = fonts.get_font(21)
+    hint_font = fonts.get_font(17)
+    button_font = fonts.get_font(26, bold=True)
 
     modal_width = min(width - 64, 980)
     modal_height = min(height - 32, 740)
@@ -2285,9 +2286,9 @@ def draw_mission_briefing_modal(screen, lesson_number, instructions_text, hint_i
 
 
 def pause_menu(screen, clock, button_sound=None):
-    title_font = pygame.font.SysFont("arial", 54, bold=True)
-    button_font = pygame.font.SysFont("arial", 28, bold=True)
-    small_font = pygame.font.SysFont("arial", 18)
+    title_font = fonts.get_font(54, bold=True)
+    button_font = fonts.get_font(28, bold=True)
+    small_font = fonts.get_font(18)
     selected = 0
     actions = ("resume", "restart", "menu")
     labels = ("Resume", "Restart Level", "Exit Level")
@@ -2453,7 +2454,7 @@ class MissionEngine:
         }
         self.drone_image_cache = {}
 
-        self.font = pygame.font.SysFont("arial", 24, bold=True)
+        self.font = fonts.get_font(24, bold=True)
         self.drones = []
         self.bullets = []
         self.mega_shots = []
@@ -3303,7 +3304,7 @@ class MissionEngine:
                 else:
                     self.screen.blit(image, image.get_rect(center=drone.pos))
             label_size = 18 if len(drone.letter) > 2 else 28
-            label_font = pygame.font.SysFont("arial", label_size, bold=True)
+            label_font = fonts.get_font(label_size, bold=True)
             render_key_label(self.screen, drone.letter, label_font, (8, 10, 18), drone.pos, drone.radius * 1.45)
 
         draw_ship(self.screen, self.turret_angle, self.pod_rotation, self.turret_image, self.pod_image, self.player_center)
@@ -3355,7 +3356,7 @@ class MissionEngine:
             self.lives,
             self.level_time_ms,
         )
-        footer_font = pygame.font.SysFont("arial", 18)
+        footer_font = fonts.get_font(18)
         footer_text = "Esc: Pause  |  F11: Max size"
         footer_surface = footer_font.render(footer_text, True, MUTED_TEXT)
         self.screen.blit(footer_surface, footer_surface.get_rect(center=(width / 2, height - 28)))
