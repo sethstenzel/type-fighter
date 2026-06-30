@@ -28,6 +28,14 @@ class CheatTests(unittest.TestCase):
         self.assertTrue(cheats.is_enabled("4"))
         self.assertFalse(cheats.is_enabled("99"))
 
+    def test_cheat_10_marks_all_levels_unlocked(self):
+        from lessons.lesson_config import LESSON_PROGRESS
+
+        cheats.enable_from_argv(["--cheats", "10"])
+        player = {"completed_lessons": []}
+        cheats.apply_player_cheats(player)
+        self.assertEqual(player["completed_lessons"], list(range(1, len(LESSON_PROGRESS))))
+
     def test_multi_digit_cheat_id(self):
         enabled, unknown = cheats.enable_from_argv(["--cheats", "11,1"])
         self.assertEqual(enabled, {"11", "1"})

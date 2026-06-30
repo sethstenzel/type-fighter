@@ -28,7 +28,8 @@ AVAILABLE_CHEATS = {
     "8": "Reset the player's high score (lifetime score) to 0",
     "9": "Reset achievements earned so they can trigger again",
     "0": "Full reset: credits, score, unlocked levels, and achievements cleared",
-    "11": "Unlock every training mission in the menu (does not mark them complete)",
+    "10": "Mark every level as unlocked in the save (persists)",
+    "11": "Unlock every training mission in the menu for this run (no save change)",
 }
 
 CHEAT_LIVES = 99
@@ -81,6 +82,15 @@ def enabled_cheats():
     return set(_enabled)
 
 
+def _total_lessons():
+    try:
+        from lessons.lesson_config import LESSON_PROGRESS
+
+        return len(LESSON_PROGRESS)
+    except Exception:
+        return 36
+
+
 def apply_player_cheats(player):
     """Apply the one-shot player-record cheats to a selected player's save."""
     if not isinstance(player, dict):
@@ -100,6 +110,10 @@ def apply_player_cheats(player):
         # Clear the last mission's stats too, otherwise the login achievement
         # check would re-mark that lesson's perfect/high-score/quick badge.
         player["last_mission_stats"] = {}
+    if is_enabled("10"):
+        # Unlock every level by marking the prerequisite lessons complete (the
+        # last level only needs the second-to-last completed to be unlocked).
+        player["completed_lessons"] = list(range(1, _total_lessons()))
     if is_enabled("8"):
         player["lifetime_score"] = 0
     if is_enabled("9"):

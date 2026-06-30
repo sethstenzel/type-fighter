@@ -153,7 +153,7 @@ TIME_STOP_START_LESSON = 27       # power-ups only spawn from this lesson on
 TIME_STOP_MAX_CHARGES = 3
 TIME_STOP_DURATION_MS = 10000     # total time-stop duration
 TIME_STOP_EXPAND_MS = 450         # ring sweep-out (freezes nearest objects first)
-TIME_STOP_CONTRACT_MS = 2500      # slow recede at the end (un-freezes farthest first)
+TIME_STOP_CONTRACT_MS = 1500      # slow recede at the end (un-freezes farthest first)
 TIME_STOP_MIN_SPEED_SCALE = 0.0   # frozen objects' speed while inside the ring (0 = full stop)
 TIME_STOP_POD_ROTATION_SCALE = 1.0 / 10.0  # pod + defense drones keep rotating at this fraction during a time stop
 TIME_STOP_DOUBLE_TAP_MS = 600     # window for the 3 rapid spacebar taps

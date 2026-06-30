@@ -37,7 +37,7 @@ DEFAULT_GAME_SETTINGS = {
     ],
     "time_stop_duration_ms": 10000,
     "time_stop_expand_ms": 450,
-    "time_stop_contract_ms": 2500,
+    "time_stop_contract_ms": 1500,
     "time_stop_min_speed_scale": 0.0,
     "time_stop_max_charges": 3,
     "time_stop_start_lesson": 27,
