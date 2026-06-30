@@ -155,8 +155,8 @@ TIME_DILATION_EXPAND_MS = 450         # ring sweep-out (freezes nearest objects 
 TIME_DILATION_CONTRACT_MS = 2500      # slow recede at the end (un-freezes farthest first)
 TIME_DILATION_MIN_SPEED_SCALE = 0.0   # frozen objects' speed while inside the ring (0 = full stop)
 TIME_DILATION_TRIPLE_TAP_MS = 600     # window for the 3 rapid spacebar taps
-TIME_RING_COLOR = (255, 240, 150)     # light yellow ring
-TIME_RING_INNER_COLOR = (255, 250, 210)
+TIME_RING_COLOR = (170, 174, 184)     # grey ring
+TIME_RING_INNER_COLOR = (210, 214, 222)
 TIME_RING_ALPHA = 90                  # ring transparency (0-255)
 TIME_DILATION_POWER_UP_COLOR = (10, 10, 14)    # black hexagon
 TIME_DILATION_POWER_UP_EDGE = (236, 240, 255)  # white border
@@ -488,6 +488,9 @@ class TimeStopRing:
     def object_time_scale(self, distance, ring_radius=None):
         radius = self.radius() if ring_radius is None else ring_radius
         return self.min_speed_scale if distance <= radius else 1.0
+
+    def is_contracting(self):
+        return self.elapsed_ms >= (self.duration_ms - self.contract_ms)
 
 
 def toggle_fullscreen():
@@ -2331,6 +2334,8 @@ class MissionEngine:
         self.explosion_sound = load_sound(self.sfx_dir / "explosion.ogg", 0.75)
         self.health_sound = load_sound(self.sfx_dir / "health.ogg", 0.85)
         self.shield_up_sound = load_sound(self.sfx_dir / "shield_up.wav", 0.85)
+        self.time_dilation_sound = load_sound(self.sfx_dir / "time_dilation.wav", 0.85)
+        self.time_dilation_ending_sound = load_sound(self.sfx_dir / "time_dilation_ending.wav", 0.85)
         self.split_sound = load_sound(self.sfx_dir / "split.ogg", 0.75)
         self.boss_sound = load_sound(self.sfx_dir / "boss.ogg", 0.85)
         self.victory_sound = load_sound(self.sfx_dir / "victory.wav", 0.9)
@@ -2416,6 +2421,7 @@ class MissionEngine:
         self.current_time_scale = 1.0
         self._ring_radius = 0.0
         self._ring_overlay = None
+        self._time_dilation_ending_played = False
         self.space_tap_times = []
         self.credits_awarded = False
         self.lives = max(
@@ -2859,6 +2865,9 @@ class MissionEngine:
     def _update_time_dilation(self, dt):
         if self.time_dilation is not None:
             self.time_dilation.update(dt * 1000)
+            if self.time_dilation.is_contracting() and not self._time_dilation_ending_played:
+                play_sound(self.time_dilation_ending_sound)
+                self._time_dilation_ending_played = True
             if not self.time_dilation.active:
                 self.time_dilation = None
         # Cache the ring radius once per frame; while active, the ship/pod and the
@@ -2894,8 +2903,9 @@ class MissionEngine:
             self._ring_max_radius(center),
         )
         self._ring_radius = 0.0
+        self._time_dilation_ending_played = False
         self.space_tap_times = []
-        play_sound(self.shield_up_sound)
+        play_sound(self.time_dilation_sound)
         return True
 
     def _register_space_tap(self, now):
@@ -3169,9 +3179,9 @@ class MissionEngine:
         overlay.fill((0, 0, 0, 0))
         center = (int(ring.center.x), int(ring.center.y))
         alpha = max(0, min(255, TIME_RING_ALPHA))
-        pygame.draw.circle(overlay, (*TIME_RING_COLOR, alpha), center, radius, 7)
-        if radius > 14:
-            pygame.draw.circle(overlay, (*TIME_RING_INNER_COLOR, max(0, alpha - 35)), center, radius - 11, 3)
+        pygame.draw.circle(overlay, (*TIME_RING_COLOR, alpha), center, radius, 14)
+        if radius > 24:
+            pygame.draw.circle(overlay, (*TIME_RING_INNER_COLOR, max(0, alpha - 35)), center, radius - 20, 6)
         self.screen.blit(overlay, (0, 0))
 
     def _process_pending_shots(self, now, dt):
