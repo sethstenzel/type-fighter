@@ -2908,6 +2908,8 @@ class MissionEngine:
             return False
         if self.time_stop_charges <= 0:
             return False
+        if self._firing_locked_for_boss_intro():
+            return False  # can't activate during the final boss pan/approach
         self.time_stop_charges -= 1
         self._save_player_resources()
         center = pygame.Vector2(self.player_center)
