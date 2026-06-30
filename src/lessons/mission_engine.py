@@ -1135,6 +1135,14 @@ def format_mission_time(ms):
     return f"{total_seconds // 60}:{total_seconds % 60:02d}"
 
 
+MAX_LEVEL_TIME_MS = 999990  # 999.99s; the level timer stops counting past this
+
+
+def format_level_timer(ms):
+    capped = min(MAX_LEVEL_TIME_MS, max(0, int(ms)))
+    return f"T: {capped / 1000:.2f}"
+
+
 def mega_target(drones, final_bosses, key, center):
     if isinstance(final_bosses, FinalBoss):
         final_bosses = [final_bosses]
@@ -1720,14 +1728,22 @@ def draw_active_player_shield(screen, center, expires_at, hits_remaining, now):
     screen.blit(shield_surface, shield_surface.get_rect(center=center))
 
 
-def draw_hud(screen, font, destroyed, drone_target, score, lives):
+def draw_hud(screen, font, destroyed, drone_target, score, lives, level_time_ms=None):
     width, _ = screen.get_size()
     left = f"Drones destroyed: {int(destroyed)}/{drone_target}"
     right = f"Score: {score}"
     life = f"Lives: {lives}"
     screen.blit(font.render(left, True, TEXT_COLOR), (22, 18))
     score_surface = font.render(right, True, TEXT_COLOR)
-    screen.blit(score_surface, (width - score_surface.get_width() - 22, 18))
+    if level_time_ms is None:
+        score_x = width - score_surface.get_width() - 22
+    else:
+        # Timer sits to the right of the score in the top-right corner.
+        timer_surface = font.render(format_level_timer(level_time_ms), True, TEXT_COLOR)
+        timer_x = width - timer_surface.get_width() - 22
+        score_x = timer_x - 24 - score_surface.get_width()
+        screen.blit(timer_surface, (timer_x, 18))
+    screen.blit(score_surface, (score_x, 18))
     life_surface = font.render(life, True, MUTED_TEXT)
     screen.blit(life_surface, (width - life_surface.get_width() - 22, 52))
 
@@ -2690,7 +2706,7 @@ class MissionEngine:
             self.next_spawn_rate_change_time = now + SPAWN_RATE_CHANGE_MS
         update_star_field(self.stars, dt)
         if self.mission_start_ticks is not None:
-            self.level_time_ms = max(0, now - self.mission_start_ticks)
+            self.level_time_ms = min(MAX_LEVEL_TIME_MS, max(0, now - self.mission_start_ticks))
         if self.player_mega_shot_available and self.mega_charge_blocks < MEGA_CHARGE_MAX_BLOCKS:
             if self.next_mega_recharge_time and now >= self.next_mega_recharge_time:
                 self.mega_charge_blocks += 1
@@ -2892,13 +2908,19 @@ class MissionEngine:
             self.max_shield_charges,
             shield_center_x,
         )
-        draw_hud(self.screen, self.font, min(self.destroyed, self.drone_target), self.drone_target, self.score, self.lives)
+        draw_hud(
+            self.screen,
+            self.font,
+            min(self.destroyed, self.drone_target),
+            self.drone_target,
+            self.score,
+            self.lives,
+            self.level_time_ms,
+        )
         footer_font = pygame.font.SysFont("arial", 18)
         footer_text = "Esc: Pause  |  F11: Max size"
         footer_surface = footer_font.render(footer_text, True, MUTED_TEXT)
         self.screen.blit(footer_surface, footer_surface.get_rect(center=(width / 2, height - 28)))
-        timer_surface = self.font.render(format_mission_time(self.level_time_ms), True, TEXT_COLOR)
-        self.screen.blit(timer_surface, timer_surface.get_rect(bottomright=(width - 22, height - 18)))
 
         if present:
             pygame.display.flip()

@@ -242,6 +242,14 @@ class MissionMechanicsTests(unittest.TestCase):
     def test_quick_defender_goal_default(self):
         self.assertEqual(me.quick_defender_goal_ms(1), me.DEFAULT_QUICK_DEFENDER_MS)
 
+    def test_format_level_timer_hundredths_and_cap(self):
+        self.assertEqual(me.format_level_timer(0), "T: 0.00")
+        self.assertEqual(me.format_level_timer(1500), "T: 1.50")
+        self.assertEqual(me.format_level_timer(12340), "T: 12.34")
+        # stops counting past 999.99s
+        self.assertEqual(me.format_level_timer(999990), "T: 999.99")
+        self.assertEqual(me.format_level_timer(5_000_000), "T: 999.99")
+
     def test_calculate_credits_earned_bonuses(self):
         engine = me.MissionEngine.__new__(me.MissionEngine)
         engine.destroyed = 50
