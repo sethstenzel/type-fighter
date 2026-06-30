@@ -155,6 +155,7 @@ TIME_STOP_DURATION_MS = 10000     # total time-stop duration
 TIME_STOP_EXPAND_MS = 450         # ring sweep-out (freezes nearest objects first)
 TIME_STOP_CONTRACT_MS = 2500      # slow recede at the end (un-freezes farthest first)
 TIME_STOP_MIN_SPEED_SCALE = 0.0   # frozen objects' speed while inside the ring (0 = full stop)
+TIME_STOP_POD_ROTATION_SCALE = 1.0 / 3.0  # pod keeps rotating at this fraction during a time stop
 TIME_STOP_DOUBLE_TAP_MS = 600     # window for the 3 rapid spacebar taps
 TIME_RING_COLOR = (170, 174, 184)     # grey ring
 TIME_RING_INNER_COLOR = (210, 214, 222)
@@ -2936,13 +2937,17 @@ class MissionEngine:
         now = pygame.time.get_ticks()
         self._update_time_stop(dt)
         self._update_player_center(dt)
+        # During a time stop the pod keeps rotating, but at 1/3 speed.
+        pod_scale = TIME_STOP_POD_ROTATION_SCALE if self.time_stop is not None else 1.0
         self.pod_rotation = (
-            self.pod_rotation + math.tau * dt * self.current_time_scale / POD_ROTATION_SECONDS
+            self.pod_rotation + math.tau * dt * pod_scale / POD_ROTATION_SECONDS
         ) % math.tau
         if now >= self.next_spawn_rate_change_time:
             self.current_spawn_interval_ms = self._spawn_interval()
             self.next_spawn_rate_change_time = now + SPAWN_RATE_CHANGE_MS
-        update_star_field(self.stars, dt)
+        # The background star field stops drifting during a time stop.
+        if self.time_stop is None:
+            update_star_field(self.stars, dt)
         if self.mission_start_ticks is not None:
             self.level_time_ms = min(
                 MAX_LEVEL_TIME_MS, self.level_time_ms + dt * 1000 * self.current_time_scale
