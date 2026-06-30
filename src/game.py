@@ -778,6 +778,7 @@ def player_select_loop(screen, clock):
                 elif event.key in (pygame.K_UP, pygame.K_w) and players:
                     navigate(-1)
                 elif event.key in (pygame.K_RETURN, pygame.K_SPACE) and players:
+                    play_button_press()
                     return players, players[selected]
             if event.type == pygame.MOUSEBUTTONDOWN and players:
                 if event.button == 1:
@@ -787,6 +788,7 @@ def player_select_loop(screen, clock):
                         continue
                     for index, rect in player_rects:
                         if rect.collidepoint(event.pos):
+                            play_button_press()
                             return players, players[index]
             if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 dragging_scrollbar = False
@@ -1074,6 +1076,10 @@ def stop_menu_music(fade_ms=700):
 
 def play_menu_beep():
     play_ui_sound(load_ui_sound(BASE_DIR / "sfx" / "beep.wav", 0.45))
+
+
+def play_button_press():
+    play_ui_sound(load_ui_sound(BASE_DIR / "sfx" / "ui_button_press.wav", 0.5))
 
 
 def load_json_dict(path):
@@ -1460,9 +1466,11 @@ def reward_modal_loop(screen, clock, reward, background):
                 return "quit"
             if event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE):
+                    play_button_press()
                     return None
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if ok_rect.collidepoint(event.pos):
+                    play_button_press()
                     return None
 
         screen = pygame.display.get_surface()
@@ -1963,6 +1971,7 @@ def upgrades_modal_loop(screen, clock, players, player):
                     return None
                 for action, index, rect in action_rects:
                     if rect.collidepoint(event.pos):
+                        play_button_press()
                         if action == "sell":
                             result = attempt_upgrade_sale(screen, clock, players, player, UPGRADE_CATALOG[index])
                         else:
@@ -2165,6 +2174,7 @@ def menu_loop(screen, clock, players, player):
                     navigate(-1)
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     if selected < unlocked_count:
+                        play_button_press()
                         completed_index = selected
                         lesson_number = LESSONS[completed_index]["number"]
                         was_completed = lesson_number in set(player.get("completed_lessons", []))
@@ -2207,6 +2217,7 @@ def menu_loop(screen, clock, players, player):
                     if rect.collidepoint(event.pos):
                         selected = index
                         if index < unlocked_count:
+                            play_button_press()
                             lesson_number = LESSONS[index]["number"]
                             was_completed = lesson_number in set(player.get("completed_lessons", []))
                             result = run_lesson_from_menu(screen, clock, LESSONS[index], player)

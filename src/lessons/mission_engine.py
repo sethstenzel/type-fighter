@@ -2252,7 +2252,7 @@ def draw_mission_briefing_modal(screen, lesson_number, instructions_text, hint_i
     return button_rect, max_instruction_scroll, scrollbar_track_rect, scrollbar_thumb_rect
 
 
-def pause_menu(screen, clock):
+def pause_menu(screen, clock, button_sound=None):
     title_font = pygame.font.SysFont("arial", 54, bold=True)
     button_font = pygame.font.SysFont("arial", 28, bold=True)
     small_font = pygame.font.SysFont("arial", 18)
@@ -2290,6 +2290,7 @@ def pause_menu(screen, clock):
                 if event.key in (pygame.K_DOWN, pygame.K_s):
                     selected = (selected + 1) % len(actions)
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    play_sound(button_sound)
                     return actions[selected]
                 if event.key == pygame.K_r:
                     return "restart"
@@ -2305,6 +2306,7 @@ def pause_menu(screen, clock):
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 for index, rect in enumerate(buttons):
                     if rect.collidepoint(event.pos):
+                        play_sound(button_sound)
                         return actions[index]
 
         overlay = pygame.Surface((width, height), pygame.SRCALPHA)
@@ -2368,6 +2370,7 @@ class MissionEngine:
         self.time_stop_sound = load_sound(self.sfx_dir / "time_stop.wav", 0.85)
         self.time_stop_ending_sound = load_sound(self.sfx_dir / "time_stop_ending.wav", 0.85)
         self.split_sound = load_sound(self.sfx_dir / "split.ogg", 0.75)
+        self.button_press_sound = load_sound(self.sfx_dir / "ui_button_press.wav", 0.5)
         self.boss_sound = load_sound(self.sfx_dir / "boss.ogg", 0.85)
         self.victory_sound = load_sound(self.sfx_dir / "victory.wav", 0.9)
         self.warning_sound = load_sound(self.sfx_dir / "warning.wav", 0.8)
@@ -3548,7 +3551,7 @@ class MissionEngine:
                         if pygame.mixer.get_init():
                             pygame.mixer.music.pause()
                         pause_started_at = pygame.time.get_ticks()
-                        pause_result = pause_menu(self.screen, self.clock)
+                        pause_result = pause_menu(self.screen, self.clock, self.button_press_sound)
                         if pause_result == "resume":
                             self._shift_gameplay_timers(pygame.time.get_ticks() - pause_started_at)
                             pygame.mouse.set_visible(False)
