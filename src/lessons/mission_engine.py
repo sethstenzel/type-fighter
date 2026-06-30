@@ -2993,6 +2993,27 @@ class MissionEngine:
         # the turret works the queue exactly as it does for typed shots.
         if self.pending_shots:
             return
+        # On the final boss, unload a full mega shot once charged to destroy it.
+        if (
+            self.final_bosses
+            and self._boss_perspective_ready()
+            and self.player_mega_shot_available
+            and self.mega_charge_blocks >= MEGA_FINAL_KILL_LEVEL
+        ):
+            queued_mega = queue_mega_shot(
+                self.drones,
+                self.final_bosses,
+                self.pending_shots,
+                self.final_bosses[0].letter,
+                self.player_center,
+                self.mega_charge_blocks,
+                now,
+                self.player_advanced_mega_shot_available,
+            )
+            if queued_mega:
+                self.mega_charge_blocks = max(0, self.mega_charge_blocks - queued_mega)
+                self.next_mega_recharge_time = now + MEGA_RECHARGE_DELAY_MS
+                return
         max_range = AUTO_FIRE_RANGE_RATIO * self.screen.get_size()[1] / 2
         target = nearest_targetable_drone_in_range(self.drones, self.player_center, max_range)
         if target is not None:
