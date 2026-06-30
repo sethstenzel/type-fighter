@@ -61,6 +61,9 @@ class CheatTests(unittest.TestCase):
             "lifetime_score": 900,
             "achievements": {"a": True},
             "perfect_lessons": [1],
+            "high_score_lessons": [1, 2],
+            "quick_lessons": [3],
+            "last_mission_stats": {"lesson_number": 3, "won": True, "score": 9999},
         }
         cheats.apply_player_cheats(player)
         self.assertEqual(player["completed_lessons"], [])
@@ -68,6 +71,9 @@ class CheatTests(unittest.TestCase):
         self.assertEqual(player["lifetime_score"], 0)
         self.assertEqual(player["achievements"], {})
         self.assertEqual(player["perfect_lessons"], [])
+        self.assertEqual(player["high_score_lessons"], [])
+        self.assertEqual(player["quick_lessons"], [])
+        self.assertEqual(player["last_mission_stats"], {})
 
 
 if __name__ == "__main__":

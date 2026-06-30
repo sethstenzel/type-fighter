@@ -97,6 +97,9 @@ def apply_player_cheats(player):
         player["purchased_upgrade_ids"] = []
         player["sold_lives"] = 0
         player["sold_shields"] = 0
+        # Clear the last mission's stats too, otherwise the login achievement
+        # check would re-mark that lesson's perfect/high-score/quick badge.
+        player["last_mission_stats"] = {}
     if is_enabled("8"):
         player["lifetime_score"] = 0
     if is_enabled("9"):
