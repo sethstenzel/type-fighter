@@ -3,6 +3,8 @@ import wave
 
 import pygame
 
+import fonts
+
 from lessons.key_render import display_key, inline_text_width, render_inline_center, render_inline_text
 from lessons.lesson_config import lesson_fingers, lesson_new_keys, lesson_title
 
@@ -85,7 +87,7 @@ def draw_training_image(surface, rect, title_font, small_font, lesson_number):
     pygame.draw.rect(surface, PANEL_EDGE, rect, 2, border_radius=10)
     surface.blit(title_font.render(title, True, TEXT_COLOR), (rect.x + 28, rect.y + 22))
 
-    key_font = pygame.font.SysFont("arial", 46, bold=True)
+    key_font = fonts.get_font(46, bold=True)
     key_box = pygame.Rect(0, 0, max(260, inline_text_width(key_text, key_font) + 80), 90)
     key_box.center = (rect.centerx, rect.y + 145)
     pygame.draw.rect(surface, NEW_KEY, key_box, border_radius=10)
@@ -120,10 +122,10 @@ def run_intro(screen, clock, base_dir, lesson_number):
     intro_text = read_text(lesson_dir / f"lesson_{lesson_number}_intro.txt")
     play_audio(intro_audio_path)
 
-    title_font = pygame.font.SysFont("arial", 30, bold=True)
-    body_font = pygame.font.SysFont("arial", 22)
-    small_font = pygame.font.SysFont("arial", 18, bold=True)
-    prompt_font = pygame.font.SysFont("arial", 24, bold=True)
+    title_font = fonts.get_font(30, bold=True)
+    body_font = fonts.get_font(22)
+    small_font = fonts.get_font(18, bold=True)
+    prompt_font = fonts.get_font(24, bold=True)
 
     intro_duration = max(1, get_wav_duration(intro_audio_path) - INTRO_SCROLL_END_BUFFER_SECONDS)
     lines = []

@@ -39,6 +39,7 @@ from game_config import (
     save_game_data_db,
 )
 import cheats
+import fonts
 import user_settings
 from player_model import (
     DEFAULT_POD,
@@ -422,7 +423,7 @@ def update_and_draw_mock_battle(screen, battle, clock, menu_left, menu_right):
         else:
             pygame.draw.circle(screen, ONE_SHOT_DRONE_COLOR, drone["pos"], drone["radius"])
             pygame.draw.circle(screen, (255, 231, 214), drone["pos"], drone["radius"], 2)
-        label_font = pygame.font.SysFont("arial", 20, bold=True)
+        label_font = fonts.get_font(20, bold=True)
         render_key_label(screen, drone["letter"], label_font, (8, 10, 18), drone["pos"], drone["radius"] * 1.45)
 
     draw_mock_battle_ship(screen, pod_center, turret_angle, battle)
@@ -650,9 +651,9 @@ def run_lesson_from_menu(screen, clock, lesson, player):
 
 
 def create_player_screen(screen, clock, players):
-    title_font = pygame.font.SysFont("arial", 46, bold=True)
-    body_font = pygame.font.SysFont("arial", 24)
-    small_font = pygame.font.SysFont("arial", 18)
+    title_font = fonts.get_font(46, bold=True)
+    body_font = fonts.get_font(24)
+    small_font = fonts.get_font(18)
     name = ""
     message = ""
     stars = create_star_field()
@@ -710,10 +711,10 @@ def create_player_screen(screen, clock, players):
 
 def player_select_loop(screen, clock):
     ensure_menu_music()
-    title_font = pygame.font.SysFont("arial", 54, bold=True)
-    item_font = pygame.font.SysFont("arial", 30, bold=True)
-    body_font = pygame.font.SysFont("arial", 22)
-    small_font = pygame.font.SysFont("arial", 18)
+    title_font = fonts.get_font(54, bold=True)
+    item_font = fonts.get_font(30, bold=True)
+    body_font = fonts.get_font(22)
+    small_font = fonts.get_font(18)
     players = load_players()
     selected = 0
     delete_confirm = False
@@ -919,8 +920,8 @@ def draw_modal_button(screen, rect, text, font, enabled=True, selected=False):
 
 
 def message_modal(screen, clock, title, message):
-    title_font = pygame.font.SysFont("arial", 38, bold=True)
-    body_font = pygame.font.SysFont("arial", 22)
+    title_font = fonts.get_font(38, bold=True)
+    body_font = fonts.get_font(22)
     ok_rect = pygame.Rect(0, 0, 0, 0)
     while True:
         for event in pygame.event.get():
@@ -1332,10 +1333,10 @@ def draw_achievement_tile(screen, rect, achievement, earned, title_font, body_fo
 
 
 def achievements_modal_loop(screen, clock, player):
-    title_font = pygame.font.SysFont("arial", 38, bold=True)
-    tile_title_font = pygame.font.SysFont("arial", 20, bold=True)
-    body_font = pygame.font.SysFont("arial", 16)
-    button_font = pygame.font.SysFont("arial", 22, bold=True)
+    title_font = fonts.get_font(38, bold=True)
+    tile_title_font = fonts.get_font(20, bold=True)
+    body_font = fonts.get_font(16)
+    button_font = fonts.get_font(22, bold=True)
     earned_ids = set(normalized_achievement_ids(player.get("achievements", [])))
     scroll = 0
     close_rect = pygame.Rect(0, 0, 0, 0)
@@ -1451,9 +1452,9 @@ def achievements_modal_loop(screen, clock, player):
 
 
 def reward_modal_loop(screen, clock, reward, background):
-    title_font = pygame.font.SysFont("arial", 40, bold=True)
-    body_font = pygame.font.SysFont("arial", 22)
-    button_font = pygame.font.SysFont("arial", 24, bold=True)
+    title_font = fonts.get_font(40, bold=True)
+    body_font = fonts.get_font(22)
+    button_font = fonts.get_font(24, bold=True)
     ok_rect = pygame.Rect(0, 0, 0, 0)
     image = load_ui_image(reward.get("image_path")) if reward.get("image_path") else None
     if reward.get("kind") in ("unlock", "achievement"):
@@ -1563,9 +1564,9 @@ def draw_upgrades_modal(screen, title_font, body_font, small_font, player):
     modal_height = max(1, min(900, height - margin_y * 2))
     modal_rect = pygame.Rect(0, 0, modal_width, modal_height)
     modal_rect.center = (width / 2, height / 2)
-    title_font = pygame.font.SysFont("arial", max(24, min(42, modal_height // 15)), bold=True)
-    body_font = pygame.font.SysFont("arial", max(14, min(22, modal_height // 28)))
-    small_font = pygame.font.SysFont("arial", max(11, min(20, modal_height // 34)))
+    title_font = fonts.get_font(max(24, min(42, modal_height // 15)), bold=True)
+    body_font = fonts.get_font(max(14, min(22, modal_height // 28)))
+    small_font = fonts.get_font(max(11, min(20, modal_height // 34)))
     pygame.draw.rect(screen, (10, 18, 34), modal_rect, border_radius=8)
     pygame.draw.rect(screen, ACCENT, modal_rect, 2, border_radius=8)
     header_pad = max(10, min(28, modal_height // 28))
@@ -1677,9 +1678,9 @@ def draw_upgrades_modal(screen, title_font, body_font, small_font, player):
 
 
 def confirm_purchase_modal(screen, clock, upgrade, player):
-    title_font = pygame.font.SysFont("arial", 38, bold=True)
-    body_font = pygame.font.SysFont("arial", 22)
-    small_font = pygame.font.SysFont("arial", 18)
+    title_font = fonts.get_font(38, bold=True)
+    body_font = fonts.get_font(22)
+    small_font = fonts.get_font(18)
     confirm_rect = pygame.Rect(0, 0, 0, 0)
     cancel_rect = pygame.Rect(0, 0, 0, 0)
     while True:
@@ -1726,8 +1727,8 @@ def confirm_purchase_modal(screen, clock, upgrade, player):
 
 
 def insufficient_funds_modal(screen, clock, upgrade, player):
-    title_font = pygame.font.SysFont("arial", 38, bold=True)
-    body_font = pygame.font.SysFont("arial", 22)
+    title_font = fonts.get_font(38, bold=True)
+    body_font = fonts.get_font(22)
     ok_rect = pygame.Rect(0, 0, 0, 0)
     while True:
         for event in pygame.event.get():
@@ -1758,8 +1759,8 @@ def insufficient_funds_modal(screen, clock, upgrade, player):
 
 
 def upgrade_locked_modal(screen, clock, upgrade, reason):
-    title_font = pygame.font.SysFont("arial", 38, bold=True)
-    body_font = pygame.font.SysFont("arial", 22)
+    title_font = fonts.get_font(38, bold=True)
+    body_font = fonts.get_font(22)
     ok_rect = pygame.Rect(0, 0, 0, 0)
     while True:
         for event in pygame.event.get():
@@ -1793,9 +1794,9 @@ def sell_upgrade_modal(screen, clock, upgrade, player):
     max_quantity = max_sell_quantity(player, upgrade)
     if max_quantity <= 0:
         return None
-    title_font = pygame.font.SysFont("arial", 38, bold=True)
-    body_font = pygame.font.SysFont("arial", 22)
-    large_font = pygame.font.SysFont("arial", 42, bold=True)
+    title_font = fonts.get_font(38, bold=True)
+    body_font = fonts.get_font(22)
+    large_font = fonts.get_font(42, bold=True)
     quantity = 1
     up_rect = pygame.Rect(0, 0, 0, 0)
     down_rect = pygame.Rect(0, 0, 0, 0)
@@ -1880,9 +1881,9 @@ def sell_upgrade_modal(screen, clock, upgrade, player):
 
 
 def color_choice_modal(screen, clock, upgrade):
-    title_font = pygame.font.SysFont("arial", 38, bold=True)
-    body_font = pygame.font.SysFont("arial", 22)
-    small_font = pygame.font.SysFont("arial", 18)
+    title_font = fonts.get_font(38, bold=True)
+    body_font = fonts.get_font(22)
+    small_font = fonts.get_font(18)
     selected = 0
     color_rects = []
     hovered_color_index = None
@@ -1960,9 +1961,9 @@ def color_choice_modal(screen, clock, upgrade):
 
 
 def upgrades_modal_loop(screen, clock, players, player):
-    title_font = pygame.font.SysFont("arial", 42, bold=True)
-    body_font = pygame.font.SysFont("arial", 22)
-    small_font = pygame.font.SysFont("arial", 20)
+    title_font = fonts.get_font(42, bold=True)
+    body_font = fonts.get_font(22)
+    small_font = fonts.get_font(20)
     action_rects = []
     close_rect = pygame.Rect(0, 0, 0, 0)
     hovered_action = None
@@ -2098,11 +2099,11 @@ def draw_lesson_badges(screen, card_rect, lesson_number, player, font):
 
 def menu_loop(screen, clock, players, player):
     ensure_menu_music()
-    title_font = pygame.font.SysFont("arial", 54, bold=True)
-    item_font = pygame.font.SysFont("arial", 30, bold=True)
-    body_font = pygame.font.SysFont("arial", 22)
-    small_font = pygame.font.SysFont("arial", 18)
-    marker_font = pygame.font.SysFont("arial", 18, bold=True)
+    title_font = fonts.get_font(54, bold=True)
+    item_font = fonts.get_font(30, bold=True)
+    body_font = fonts.get_font(22)
+    small_font = fonts.get_font(18)
+    marker_font = fonts.get_font(18, bold=True)
 
     selected = 0
     stars = create_star_field()

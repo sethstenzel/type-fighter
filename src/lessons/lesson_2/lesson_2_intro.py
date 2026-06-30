@@ -3,6 +3,8 @@ import wave
 
 import pygame
 
+import fonts
+
 from lessons.key_render import inline_text_width, render_inline_center, render_inline_text, render_key_label
 
 
@@ -142,10 +144,10 @@ def run(screen, clock, base_dir):
     intro_text = read_text(lesson_dir / "lesson_2_intro.txt")
     play_audio(intro_audio_path)
 
-    title_font = pygame.font.SysFont("arial", 30, bold=True)
-    body_font = pygame.font.SysFont("arial", 22)
-    small_font = pygame.font.SysFont("arial", 18, bold=True)
-    prompt_font = pygame.font.SysFont("arial", 24, bold=True)
+    title_font = fonts.get_font(30, bold=True)
+    body_font = fonts.get_font(22)
+    small_font = fonts.get_font(18, bold=True)
+    prompt_font = fonts.get_font(24, bold=True)
 
     intro_duration = max(1, get_wav_duration(intro_audio_path) - INTRO_SCROLL_END_BUFFER_SECONDS)
     lines = []
