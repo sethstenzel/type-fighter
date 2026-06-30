@@ -1974,11 +1974,16 @@ def draw_end_screen(
     accuracy_percent = 100 if accuracy_inputs == 0 else round(accurate_inputs * 100 / accuracy_inputs)
     # `score` is the grand total (base + bonus). Show its components plus the total.
     base_points = max(0, score - bonus_points)
+    # Each drone is treated as one 5-letter word (avg English word length), so
+    # words typed == drones destroyed and WPM = drones / minutes.
+    minutes = level_time_ms / 60000 if level_time_ms > 0 else 0
+    wpm = round(destroyed_count / minutes) if minutes > 0 else 0
     rows = [
         ("Points", str(base_points)),
         ("Bonus points", str(bonus_points)),
         ("Total level score", str(score)),
         ("Time", format_mission_time(level_time_ms)),
+        ("WPM", str(wpm)),
         ("Hits taken", str(hits_taken)),
         ("Drones destroyed", f"{destroyed_count}/{drone_target}"),
         ("Accuracy", f"{accuracy_percent}%"),
@@ -3036,8 +3041,14 @@ class MissionEngine:
         # The background star field stops drifting during a time stop.
         if self.time_stop is None:
             update_star_field(self.stars, dt)
-        # The level timer is fully frozen while a time stop is active.
-        if self.mission_start_ticks is not None and self.time_stop is None:
+        # The level timer is frozen while a time stop is active and while the
+        # level is transitioning to the final boss (its pan/approach), so that
+        # idle time is not counted against the player.
+        if (
+            self.mission_start_ticks is not None
+            and self.time_stop is None
+            and not self._firing_locked_for_boss_intro()
+        ):
             self.level_time_ms = min(
                 MAX_LEVEL_TIME_MS, self.level_time_ms + dt * 1000
             )
