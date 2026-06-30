@@ -31,6 +31,7 @@ AVAILABLE_CHEATS = {
     "10": "Mark every level as unlocked in the save (persists)",
     "11": "Unlock every training mission in the menu for this run (no save change)",
     "12": "Disable the wrong-key error sound",
+    "13": "Disable the drone explosion sound when they are destroyed",
 }
 
 CHEAT_LIVES = 99

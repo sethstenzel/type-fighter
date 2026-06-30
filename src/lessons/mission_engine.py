@@ -2344,6 +2344,8 @@ class MissionEngine:
         self.hint_texts = load_json_object(self.lesson_dir / f"mission_hints_l{self.lesson_number}.json")
         self.laser_sound = load_sound(self.sfx_dir / "laser.ogg", 0.55)
         self.explosion_sound = load_sound(self.sfx_dir / "explosion.ogg", 0.75)
+        if cheats.is_enabled("13"):
+            self.explosion_sound = None  # cheat: silence enemy explosion sounds
         self.health_sound = load_sound(self.sfx_dir / "health.ogg", 0.85)
         self.shield_up_sound = load_sound(self.sfx_dir / "shield_up.wav", 0.85)
         self.time_stop_sound = load_sound(self.sfx_dir / "time_stop.wav", 0.85)
