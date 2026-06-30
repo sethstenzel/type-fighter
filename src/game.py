@@ -735,7 +735,7 @@ def player_select_loop(screen, clock):
         if not players:
             return
         selected = (selected + step) % len(players)
-        play_menu_beep()
+        play_button_press()
         delete_confirm = False
         suppress_hover_until_redraw = True
 
@@ -804,7 +804,7 @@ def player_select_loop(screen, clock):
                 new_selected = min(len(players) - 1, first_visible + max(0, visible_rows - 1))
                 if new_selected != selected:
                     selected = new_selected
-                    play_menu_beep()
+                    play_button_press()
                 delete_confirm = False
             elif event.type == pygame.MOUSEMOTION and players:
                 if suppress_hover_until_redraw:
@@ -813,14 +813,14 @@ def player_select_loop(screen, clock):
                     if rect.collidepoint(event.pos):
                         if index != selected:
                             selected = index
-                            play_menu_beep()
+                            play_button_press()
                             delete_confirm = False
                         break
             if event.type == pygame.MOUSEWHEEL and players:
                 step, last_wheel_scroll_time = should_apply_menu_wheel(event, last_wheel_scroll_time)
                 if step:
                     selected = (selected + step) % len(players)
-                    play_menu_beep()
+                    play_button_press()
                     delete_confirm = False
 
         # Hold Up/Down (or W/S) to keep moving through the list (~3x/second).
@@ -1358,6 +1358,7 @@ def achievements_modal_loop(screen, clock, player):
                 return "quit"
             if event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_ESCAPE, pygame.K_RETURN, pygame.K_SPACE):
+                    play_button_press()
                     return None
                 if event.key in (pygame.K_DOWN, pygame.K_s):
                     scroll += 1
@@ -1374,6 +1375,7 @@ def achievements_modal_loop(screen, clock, player):
                     scrollbar_drag_offset = event.pos[1] - thumb_rect.y
                     continue
                 if close_rect.collidepoint(event.pos):
+                    play_button_press()
                     return None
             if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 dragging_scrollbar = False
@@ -1692,16 +1694,21 @@ def confirm_purchase_modal(screen, clock, upgrade, player):
                 screen = enforce_min_window_size(screen)
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
+                    play_button_press()
                     return False
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE, pygame.K_y):
+                    play_button_press()
                     return True
                 if event.key in (pygame.K_n, pygame.K_BACKSPACE):
+                    play_button_press()
                     return False
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 mouse_pos = event.pos
                 if confirm_rect.collidepoint(mouse_pos):
+                    play_button_press()
                     return True
                 if cancel_rect.collidepoint(mouse_pos):
+                    play_button_press()
                     return False
 
         screen = pygame.display.get_surface()
@@ -1804,6 +1811,7 @@ def sell_upgrade_modal(screen, clock, upgrade, player):
                 return "quit"
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
+                    play_button_press()
                     return None
                 if event.key in (pygame.K_UP, pygame.K_w):
                     new_quantity = min(max_quantity, quantity + 1)
@@ -1816,6 +1824,7 @@ def sell_upgrade_modal(screen, clock, upgrade, player):
                         quantity = new_quantity
                         play_menu_beep()
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                    play_button_press()
                     return quantity
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if up_rect.collidepoint(event.pos):
@@ -1829,8 +1838,10 @@ def sell_upgrade_modal(screen, clock, upgrade, player):
                         quantity = new_quantity
                         play_menu_beep()
                 elif sell_rect.collidepoint(event.pos):
+                    play_button_press()
                     return quantity
                 elif cancel_rect.collidepoint(event.pos):
+                    play_button_press()
                     return None
 
         screen = pygame.display.get_surface()
@@ -2113,7 +2124,7 @@ def menu_loop(screen, clock, players, player):
         if new_selected != selected:
             selected = new_selected
             first_visible = keep_index_visible(selected, first_visible, len(LESSONS), visible_rows)
-            play_menu_beep()
+            play_button_press()
         suppress_hover_until_redraw = True
 
     # Login achievement check: award (and queue modals for) any achievements the
@@ -2162,6 +2173,7 @@ def menu_loop(screen, clock, players, player):
                         player,
                         mission_engine.player_mission_settings(player),
                         unlocks,
+                        on_button_press=play_button_press,
                     )
                     save_players(players)
                     if result == "quit":
@@ -2198,12 +2210,14 @@ def menu_loop(screen, clock, players, player):
                     scrollbar_drag_offset = event.pos[1] - scrollbar_thumb.y
                     continue
                 if achievements_button_rect is not None and achievements_button_rect.collidepoint(event.pos):
+                    play_button_press()
                     result = achievements_modal_loop(screen, clock, player)
                     if result == "quit":
                         return "quit"
                     pygame.event.clear((pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP))
                     continue
                 if upgrades_button_rect is not None and upgrades_button_rect.collidepoint(event.pos):
+                    play_button_press()
                     result = upgrades_modal_loop(screen, clock, players, player)
                     if result == "quit":
                         return "quit"
@@ -2249,7 +2263,7 @@ def menu_loop(screen, clock, players, player):
                 new_selected = min(len(LESSONS) - 1, first_visible + max(0, visible_rows - 1))
                 if new_selected != selected:
                     selected = new_selected
-                    play_menu_beep()
+                    play_button_press()
             elif event.type == pygame.MOUSEMOTION:
                 if suppress_hover_until_redraw:
                     continue
@@ -2257,7 +2271,7 @@ def menu_loop(screen, clock, players, player):
                     if rect.collidepoint(event.pos):
                         if index != selected:
                             selected = index
-                            play_menu_beep()
+                            play_button_press()
                         break
             if event.type == pygame.MOUSEWHEEL:
                 step, last_wheel_scroll_time = should_apply_menu_wheel(event, last_wheel_scroll_time)
@@ -2266,7 +2280,7 @@ def menu_loop(screen, clock, players, player):
                     if new_selected != selected:
                         selected = new_selected
                         first_visible = keep_index_visible(selected, first_visible, len(LESSONS), visible_rows)
-                        play_menu_beep()
+                        play_button_press()
 
         # Hold Up/Down (or W/S) to keep moving through the mission list (~3x/second).
         held = pygame.key.get_pressed()

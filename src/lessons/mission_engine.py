@@ -2124,13 +2124,19 @@ def save_mission_settings(player, settings):
         player["mission_settings"] = dict(settings)
 
 
-def mission_settings_modal(screen, clock, player, settings, unlocks):
+def mission_settings_modal(screen, clock, player, settings, unlocks, on_button_press=None):
     title_font = pygame.font.SysFont("arial", 40, bold=True)
     body_font = pygame.font.SysFont("arial", 23)
     small_font = pygame.font.SysFont("arial", 16)
     controls = {}
     dragging_slider = False
     background = screen.copy()
+
+    def close():
+        if on_button_press is not None:
+            on_button_press()
+        return None
+
     while True:
         screen = pygame.display.get_surface()
         for event in pygame.event.get():
@@ -2140,10 +2146,10 @@ def mission_settings_modal(screen, clock, player, settings, unlocks):
                 screen = enforce_min_window_size(screen)
             if event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_ESCAPE, pygame.K_o, pygame.K_RETURN, pygame.K_SPACE):
-                    return None
+                    return close()
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if controls.get("close") and controls["close"].collidepoint(event.pos):
-                    return None
+                    return close()
                 if controls.get("spawn_rate_track") and controls["spawn_rate_track"].collidepoint(event.pos):
                     set_spawn_rate_from_mouse(settings, controls["spawn_rate_track"], event.pos[0])
                     save_mission_settings(player, settings)
@@ -2287,8 +2293,10 @@ def pause_menu(screen, clock, button_sound=None):
                     return "resume"
                 if event.key in (pygame.K_UP, pygame.K_w):
                     selected = (selected - 1) % len(actions)
+                    play_sound(button_sound)
                 if event.key in (pygame.K_DOWN, pygame.K_s):
                     selected = (selected + 1) % len(actions)
+                    play_sound(button_sound)
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     play_sound(button_sound)
                     return actions[selected]
@@ -2301,7 +2309,9 @@ def pause_menu(screen, clock, button_sound=None):
                 # cursor must not override keyboard navigation each frame.
                 for index, rect in enumerate(buttons):
                     if rect.collidepoint(event.pos):
-                        selected = index
+                        if index != selected:
+                            selected = index
+                            play_sound(button_sound)
                         break
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 for index, rect in enumerate(buttons):
