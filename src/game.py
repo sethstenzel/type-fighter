@@ -87,6 +87,8 @@ MUTED_TEXT = (138, 150, 178)
 ACCENT = (72, 209, 204)
 LOCKED_SELECTED = (245, 203, 92)
 MENU_WHEEL_SCROLL_COOLDOWN_MS = 90
+NAV_REPEAT_DELAY_MS = 333       # hold-to-repeat: delay before the first auto-repeat
+NAV_REPEAT_INTERVAL_MS = 333    # hold-to-repeat: ~3 moves per second while held
 STARTING_LIVES = 3
 PLAYER_SHIELD_MAX_CHARGES = 3
 def running_as_frozen_app():
@@ -726,6 +728,16 @@ def player_select_loop(screen, clock):
     visible_rows = 1
     first_visible = 0
     suppress_hover_until_redraw = False
+    nav_repeat_at = 0
+
+    def navigate(step):
+        nonlocal selected, delete_confirm, suppress_hover_until_redraw
+        if not players:
+            return
+        selected = (selected + step) % len(players)
+        play_menu_beep()
+        delete_confirm = False
+        suppress_hover_until_redraw = True
 
     while True:
         update_star_field(stars, clock.get_time() / 1000)
@@ -762,15 +774,9 @@ def player_select_loop(screen, clock):
                 elif players and event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
                     delete_confirm = True
                 elif event.key in (pygame.K_DOWN, pygame.K_s) and players:
-                    selected = (selected + 1) % len(players)
-                    play_menu_beep()
-                    delete_confirm = False
-                    suppress_hover_until_redraw = True
+                    navigate(1)
                 elif event.key in (pygame.K_UP, pygame.K_w) and players:
-                    selected = (selected - 1) % len(players)
-                    play_menu_beep()
-                    delete_confirm = False
-                    suppress_hover_until_redraw = True
+                    navigate(-1)
                 elif event.key in (pygame.K_RETURN, pygame.K_SPACE) and players:
                     return players, players[selected]
             if event.type == pygame.MOUSEBUTTONDOWN and players:
@@ -814,6 +820,18 @@ def player_select_loop(screen, clock):
                     selected = (selected + step) % len(players)
                     play_menu_beep()
                     delete_confirm = False
+
+        # Hold Up/Down (or W/S) to keep moving through the list (~3x/second).
+        held = pygame.key.get_pressed()
+        nav_dir = 1 if (held[pygame.K_DOWN] or held[pygame.K_s]) else (-1 if (held[pygame.K_UP] or held[pygame.K_w]) else 0)
+        nav_now = pygame.time.get_ticks()
+        if nav_dir == 0 or not players:
+            nav_repeat_at = 0
+        elif nav_repeat_at == 0:
+            nav_repeat_at = nav_now + NAV_REPEAT_DELAY_MS
+        elif nav_now >= nav_repeat_at:
+            navigate(nav_dir)
+            nav_repeat_at = nav_now + NAV_REPEAT_INTERVAL_MS
 
         screen = pygame.display.get_surface()
         width, height = screen.get_size()
@@ -1485,8 +1503,11 @@ def reward_modal_loop(screen, clock, reward, background):
 
 
 def show_reward_modal_queue(screen, clock, queue):
+    # Capture the clean scene ONCE. Re-copying per modal would snapshot the
+    # previous modal's already-dimmed frame, stacking backdrops until the
+    # background turns black after the first couple of modals.
+    background = screen.copy()
     while queue:
-        background = screen.copy()
         result = reward_modal_loop(screen, clock, queue.pop(0), background)
         if result == "quit":
             return "quit"
@@ -2075,6 +2096,17 @@ def menu_loop(screen, clock, players, player):
     visible_rows = 1
     first_visible = 0
     suppress_hover_until_redraw = False
+    nav_repeat_at = 0
+
+    def navigate(step):
+        nonlocal selected, first_visible, suppress_hover_until_redraw
+        new_selected = max(0, min(len(LESSONS) - 1, selected + step))
+        if new_selected != selected:
+            selected = new_selected
+            first_visible = keep_index_visible(selected, first_visible, len(LESSONS), visible_rows)
+            play_menu_beep()
+        suppress_hover_until_redraw = True
+
     # Login achievement check: award (and queue modals for) any achievements the
     # player now qualifies for -- including achievements added since they last
     # played -- the moment they enter the menu after selecting a profile.
@@ -2128,19 +2160,9 @@ def menu_loop(screen, clock, players, player):
                     pygame.event.clear((pygame.KEYDOWN, pygame.KEYUP, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP))
                     continue
                 if event.key in (pygame.K_DOWN, pygame.K_s):
-                    new_selected = min(len(LESSONS) - 1, selected + 1)
-                    if new_selected != selected:
-                        selected = new_selected
-                        first_visible = keep_index_visible(selected, first_visible, len(LESSONS), visible_rows)
-                        play_menu_beep()
-                    suppress_hover_until_redraw = True
+                    navigate(1)
                 if event.key in (pygame.K_UP, pygame.K_w):
-                    new_selected = max(0, selected - 1)
-                    if new_selected != selected:
-                        selected = new_selected
-                        first_visible = keep_index_visible(selected, first_visible, len(LESSONS), visible_rows)
-                        play_menu_beep()
-                    suppress_hover_until_redraw = True
+                    navigate(-1)
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     if selected < unlocked_count:
                         completed_index = selected
@@ -2234,6 +2256,18 @@ def menu_loop(screen, clock, players, player):
                         selected = new_selected
                         first_visible = keep_index_visible(selected, first_visible, len(LESSONS), visible_rows)
                         play_menu_beep()
+
+        # Hold Up/Down (or W/S) to keep moving through the mission list (~3x/second).
+        held = pygame.key.get_pressed()
+        nav_dir = 1 if (held[pygame.K_DOWN] or held[pygame.K_s]) else (-1 if (held[pygame.K_UP] or held[pygame.K_w]) else 0)
+        nav_now = pygame.time.get_ticks()
+        if nav_dir == 0:
+            nav_repeat_at = 0
+        elif nav_repeat_at == 0:
+            nav_repeat_at = nav_now + NAV_REPEAT_DELAY_MS
+        elif nav_now >= nav_repeat_at:
+            navigate(nav_dir)
+            nav_repeat_at = nav_now + NAV_REPEAT_INTERVAL_MS
 
         screen = pygame.display.get_surface()
         width, height = screen.get_size()
