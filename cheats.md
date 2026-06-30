@@ -34,6 +34,7 @@ logged as a warning at startup. Implementation lives in `src/cheats.py`.
 | 8 | Reset high score | Resets the player's high score (lifetime score) to **0** | On player select (save) |
 | 9 | Reset achievements | Clears achievements earned so they can **trigger again** | On player select (save) |
 | 0 | Full reset | Clears credits, score, unlocked levels, achievements, and achievement rewards | On player select (save) |
+| 11 | Unlock all | Every training mission is selectable in the menu (does **not** mark them complete or alter the save) | In the mission menu |
 
 ## Notes
 

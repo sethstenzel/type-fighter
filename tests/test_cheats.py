@@ -28,6 +28,12 @@ class CheatTests(unittest.TestCase):
         self.assertTrue(cheats.is_enabled("4"))
         self.assertFalse(cheats.is_enabled("99"))
 
+    def test_multi_digit_cheat_id(self):
+        enabled, unknown = cheats.enable_from_argv(["--cheats", "11,1"])
+        self.assertEqual(enabled, {"11", "1"})
+        self.assertEqual(unknown, [])
+        self.assertTrue(cheats.is_enabled("11"))
+
     def test_listing_request(self):
         self.assertTrue(cheats.wants_listing(["--cheats", "list"]))
         self.assertTrue(cheats.wants_listing(["--cheats=help"]))

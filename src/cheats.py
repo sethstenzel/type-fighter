@@ -28,6 +28,7 @@ AVAILABLE_CHEATS = {
     "8": "Reset the player's high score (lifetime score) to 0",
     "9": "Reset achievements earned so they can trigger again",
     "0": "Full reset: credits, score, unlocked levels, and achievements cleared",
+    "11": "Unlock every training mission in the menu (does not mark them complete)",
 }
 
 CHEAT_LIVES = 99

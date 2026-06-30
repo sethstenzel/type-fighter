@@ -2075,6 +2075,9 @@ def menu_loop(screen, clock, players, player):
     visible_rows = 1
     first_visible = 0
     suppress_hover_until_redraw = False
+    # Login achievement check: award (and queue modals for) any achievements the
+    # player now qualifies for -- including achievements added since they last
+    # played -- the moment they enter the menu after selecting a profile.
     pending_reward_modals = collect_new_achievement_modals(player)
     if pending_reward_modals:
         save_players(players)
@@ -2083,7 +2086,7 @@ def menu_loop(screen, clock, players, player):
         if player_storage.get("warning"):
             return "players"
         update_star_field(stars, clock.get_time() / 1000)
-        unlocked_count = unlocked_lesson_count(player)
+        unlocked_count = len(LESSONS) if cheats.is_enabled("11") else unlocked_lesson_count(player)
         upgrades_available = 2 in set(player.get("completed_lessons", []))
         if not upgrades_available:
             upgrades_button_rect = None
