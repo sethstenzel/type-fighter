@@ -34,6 +34,20 @@ if "%TYPE_FIGHTER_RELEASE_NAME%"=="" (
   exit /b 1
 )
 
+for /f "usebackq delims=" %%V in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-Content -Raw '%~dp0src\version_info.json' | ConvertFrom-Json).version"`) do set "APP_VERSION=%%V"
+
+git -C "%~dp0." add "src\version_info.json"
+
+set "STAGED_COUNT=0"
+for /f "usebackq delims=" %%C in (`git -C "%~dp0." diff --cached --name-only ^| find /c /v ""`) do set "STAGED_COUNT=%%C"
+
+if not "%STAGED_COUNT%"=="1" (
+  echo Warning: version bump commit skipped - expected only src\version_info.json staged, found %STAGED_COUNT% staged file^(s^).
+) else (
+  git -C "%~dp0." commit -m "Bump version to %APP_VERSION%"
+  if errorlevel 1 echo Warning: version bump commit failed; continuing build.
+)
+
 set "NUITKA_WORK_DIR=%~dp0build\nuitka"
 set "NUITKA_DIST_DIR=%NUITKA_WORK_DIR%\game.dist"
 set "RELEASE_DIR=%~dp0releases\%TYPE_FIGHTER_RELEASE_NAME%"
