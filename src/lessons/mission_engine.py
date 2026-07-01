@@ -75,11 +75,14 @@ DRONE_PIXELS_PER_ROTATION = 60
 TURRET_TURN_SPEED = 25
 TURRET_FIRE_ANGLE_THRESHOLD = 0.08
 TURRET_FIRE_DELAY_MS = 90
-# Cheat 14 auto-fire: engage drones within this fraction of half the screen
-# height, toggled by tapping Left Ctrl this many times within the window.
-AUTO_FIRE_RANGE_RATIO = 0.9
+# Cheat 14 auto-fire: toggled by tapping Left Ctrl this many times within the
+# window. Its engagement range matches the defense drones
+# (DEFENSE_DRONE_ENGAGE_RANGE_RATIO of the smaller screen dimension).
 AUTO_FIRE_TOGGLE_TAPS = 5
 AUTO_FIRE_TOGGLE_WINDOW_MS = 1500
+# Fixed simulated frame step used by the headless --play_tests autoplay (60 FPS
+# worth of game time advanced per iteration, without any real-time throttle).
+HEADLESS_FRAME_MS = 1000.0 / 60.0
 SHOT_IMAGE_SIZE = 22
 SHOT_TRAIL_INTERVAL_MS = 12
 SHOT_ROTATIONS_PER_SECOND = 2
@@ -663,6 +666,20 @@ def draw_scrollable_text(surface, text, font, color, rect, scroll_y, line_spacin
 
 
 SHIFTED_SYMBOL_START_LESSON = 27
+
+
+SHIFTED_KEY_CHARS = frozenset('~!@#$%^&*()_+{}|:"<>?')
+
+
+def key_requires_shift(key):
+    """True if typing `key` on a US keyboard needs Shift held.
+
+    Covers shifted symbols (e.g. ! @ : ? _ +) and uppercase letters. Multi-char
+    key labels (enter, space, shift, ...) and unshifted keys return False.
+    """
+    if not isinstance(key, str) or len(key) != 1:
+        return False
+    return key in SHIFTED_KEY_CHARS or key.isupper()
 
 
 def event_to_lesson_key(event, lesson_number=1):
@@ -1266,6 +1283,26 @@ def high_score_goal(drone_target, power_up_count, final_boss_value, semi_boss_co
     )
 
 
+# Per-lesson high-score goals, calibrated to the maximum base score the
+# auto-fire bot reached over a 30-run --play_tests benchmark (see play_tests.py).
+# Lessons not listed here fall back to the high_score_goal() formula.
+HIGH_SCORE_GOALS = {
+    1: 9400, 2: 8600, 3: 12300, 4: 11800, 5: 15200, 6: 15500,
+    7: 14700, 8: 15200, 9: 16000, 10: 16200, 11: 17500, 12: 18400,
+    13: 21300, 14: 18600, 15: 17700, 16: 19700, 17: 17900, 18: 18700,
+    19: 20000, 20: 18600, 21: 20300, 22: 19200, 23: 20300, 24: 19700,
+    25: 19900, 26: 20800, 27: 22100, 28: 20900, 29: 20700, 30: 22000,
+    31: 21200, 32: 22200, 33: 24900, 34: 22200, 35: 22700, 36: 22500,
+}
+
+
+def high_score_goal_for_lesson(lesson_number, drone_target, power_up_count, final_boss_value, semi_boss_count):
+    """Calibrated per-lesson goal, falling back to the computed formula."""
+    if lesson_number in HIGH_SCORE_GOALS:
+        return HIGH_SCORE_GOALS[lesson_number]
+    return high_score_goal(drone_target, power_up_count, final_boss_value, semi_boss_count)
+
+
 # --- Level timing (see issue #16) -------------------------------------------
 DEFAULT_QUICK_DEFENDER_MS = 60000   # placeholder; not yet tuned per level
 QUICK_DEFENDER_TIME_GOALS = {}      # {lesson_number: milliseconds}; edit to tune
@@ -1385,14 +1422,22 @@ def drone_color(drone):
 
 def drone_image(drone, drone_images):
     if drone.is_mega:
-        return drone_images.get("semi_boss")
-    if drone.is_boss_shot:
-        return drone_images.get("yellow")
-    if drone.max_hp >= 3:
-        return drone_images.get("red")
-    if drone.max_hp == 2:
-        return drone_images.get("orange")
-    return drone_images.get("yellow")
+        base = "semi_boss"
+    elif drone.is_boss_shot:
+        base = "yellow"
+    elif drone.max_hp >= 3:
+        base = "red"
+    elif drone.max_hp == 2:
+        base = "orange"
+    else:
+        base = "yellow"
+    # Drones whose key needs Shift (symbols, etc.) use the "_shifted" art when
+    # it exists; otherwise fall back to the regular colored drone.
+    if key_requires_shift(getattr(drone, "letter", "")):
+        shifted = drone_images.get(base + "_shifted")
+        if shifted is not None:
+            return shifted
+    return drone_images.get(base)
 
 
 def scaled_drone_image(drone, drone_images, image_cache):
@@ -2360,7 +2405,12 @@ def pause_menu(screen, clock, button_sound=None):
 
 
 class MissionEngine:
-    def __init__(self, screen, clock, base_dir, lesson_dir_name, valid_keys, player=None):
+    def __init__(self, screen, clock, base_dir, lesson_dir_name, valid_keys, player=None, headless=False):
+        # `headless` drives the mission with the auto-fire bot and a virtual
+        # clock instead of the interactive loop (see simulate_autoplay); it is
+        # used only by the --play_tests harness and never by normal play.
+        self._headless = headless
+        self._virtual_ms = 0.0
         self.screen = screen
         self.clock = clock
         self.base_dir = base_dir
@@ -2451,6 +2501,12 @@ class MissionEngine:
             "orange": load_image(self.drone_gfx_dir / "orange_drone.png"),
             "red": load_image(self.drone_gfx_dir / "red_drone.png"),
             "semi_boss": load_image(self.drone_gfx_dir / "semi-boss.png"),
+            # Optional variants for Shift-requiring keys; None (missing file)
+            # falls back to the regular colored drone in drone_image().
+            "yellow_shifted": load_image(self.drone_gfx_dir / "yellow_drone_shifted.png"),
+            "orange_shifted": load_image(self.drone_gfx_dir / "orange_drone_shifted.png"),
+            "red_shifted": load_image(self.drone_gfx_dir / "red_drone_shifted.png"),
+            "semi_boss_shifted": load_image(self.drone_gfx_dir / "semi-boss_shifted.png"),
         }
         self.drone_image_cache = {}
 
@@ -2477,7 +2533,8 @@ class MissionEngine:
         self.bonus_points = 0
         self.mission_start_ticks = None
         self.level_time_ms = 0
-        self.high_score_goal = high_score_goal(
+        self.high_score_goal = high_score_goal_for_lesson(
+            self.lesson_number,
             self.drone_target,
             MAX_LIFE_POWER_UPS_PER_MISSION,
             FINAL_BOSS_SCORE if self.final_boss_count > 0 else 0,
@@ -2840,6 +2897,10 @@ class MissionEngine:
                 defense_shot.target = child
 
     def _show_end_screen(self, won):
+        if self._headless:
+            # Headless autoplay: skip the interactive end screen and credit
+            # payout; the harness reads the score straight off the engine.
+            return "won" if won else "lost"
         self._save_player_resources()
         credits_earned = self._calculate_credits_earned(won)
         self._award_credits(credits_earned)
@@ -3064,7 +3125,8 @@ class MissionEngine:
                 self.mega_charge_blocks = max(0, self.mega_charge_blocks - queued_mega)
                 self.next_mega_recharge_time = now + MEGA_RECHARGE_DELAY_MS
                 return
-        max_range = AUTO_FIRE_RANGE_RATIO * self.screen.get_size()[1] / 2
+        width, height = self.screen.get_size()
+        max_range = min(width, height) * DEFENSE_DRONE_ENGAGE_RANGE_RATIO
         target = nearest_targetable_drone_in_range(self.drones, self.player_center, max_range)
         if target is None:
             return
@@ -3093,8 +3155,16 @@ class MissionEngine:
         self.pending_shots.append(PendingShot(target=target, damage=1, created_at=now))
 
     def _begin_frame(self):
-        dt = self.clock.tick(60) / 1000
-        now = pygame.time.get_ticks()
+        if self._headless:
+            # Fixed-step virtual clock: advance simulated time without sleeping
+            # or reading wall-clock, so a full playthrough runs in a fraction of
+            # real time.
+            dt = HEADLESS_FRAME_MS / 1000.0
+            now = int(self._virtual_ms)
+            self._virtual_ms += HEADLESS_FRAME_MS
+        else:
+            dt = self.clock.tick(60) / 1000
+            now = pygame.time.get_ticks()
         self._update_time_stop(dt)
         self._update_player_center(dt)
         # During a time stop the pod keeps rotating, but at 1/3 speed.
@@ -3867,39 +3937,100 @@ class MissionEngine:
                     if event.key == pygame.K_SPACE:
                         self.space_held = False
 
-            if cheats.is_enabled("14") and self.auto_fire_enabled:
-                self._auto_fire_turret(now)
-            self._process_pending_shots(now, dt)
-
-            self._spawn_entities(now)
-
-            if (
-                not final_boss_enabled(self.lesson_number)
-                and (self.lesson_number <= 2 or self.spawned_count >= self.drone_target)
-                and self.destroyed >= self.drone_target
-                and active_mini_boss_count(self.drones) == 0
-            ):
-                self._stop_all_music(BG_MUSIC_FADE_OUT_MS)
-                stop_audio()
-                play_sound(self.victory_sound)
-                return self._show_end_screen(True)
-
-            self._update_final_boss(now, dt)
-            self._update_defense_drones(now, dt)
-            result = self._update_drones(now, dt)
+            result = self._advance_frame(now, dt)
             if result is not None:
                 return result
-            self._update_defense_shots(dt)
-
-            self._update_bullets(now, dt)
-            result = self._update_mega_shots(now, dt)
-            if result is not None:
-                return result
-
-            self._update_particles(dt)
-            self._update_shot_trails(dt)
 
             self._draw_frame(now)
+
+    def _advance_frame(self, now, dt):
+        """Run one frame of simulation (everything except input and drawing).
+
+        Returns a mission result when the mission ends this frame, else None.
+        Shared by the interactive loop and the headless autoplay so both step
+        the world identically.
+        """
+        if self._headless or (cheats.is_enabled("14") and self.auto_fire_enabled):
+            self._auto_fire_turret(now)
+        self._process_pending_shots(now, dt)
+
+        self._spawn_entities(now)
+
+        if (
+            not final_boss_enabled(self.lesson_number)
+            and (self.lesson_number <= 2 or self.spawned_count >= self.drone_target)
+            and self.destroyed >= self.drone_target
+            and active_mini_boss_count(self.drones) == 0
+        ):
+            self._stop_all_music(BG_MUSIC_FADE_OUT_MS)
+            stop_audio()
+            play_sound(self.victory_sound)
+            return self._show_end_screen(True)
+
+        self._update_final_boss(now, dt)
+        self._update_defense_drones(now, dt)
+        result = self._update_drones(now, dt)
+        if result is not None:
+            return result
+        self._update_defense_shots(dt)
+
+        self._update_bullets(now, dt)
+        result = self._update_mega_shots(now, dt)
+        if result is not None:
+            return result
+
+        self._update_particles(dt)
+        self._update_shot_trails(dt)
+        return None
+
+    def _prepare_headless(self):
+        """Silence audio and rebase all timers onto the virtual clock so a
+        headless playthrough is deterministic and makes no sound."""
+        self._stop_all_music()
+        stop_audio()
+        for attr in (
+            "laser_sound", "explosion_sound", "health_sound", "shield_up_sound",
+            "time_stop_sound", "time_stop_ending_sound", "split_sound",
+            "button_press_sound", "boss_sound", "victory_sound", "warning_sound",
+            "limited_sound", "bg_music", "boss_music",
+        ):
+            setattr(self, attr, None)
+        self._virtual_ms = 0.0
+        self.mission_start_ticks = 0
+        self.next_spawn_time = 0
+        self.next_spawn_rate_change_time = int(SPAWN_RATE_CHANGE_MS)
+        self.next_power_up_spawn_time = next_power_up_time(0)
+        self.next_mega_recharge_time = 0
+
+    def simulate_autoplay(self, max_sim_ms=6 * 60 * 1000):
+        """Play the mission to completion with the auto-fire bot on a virtual
+        clock, returning a result dict. No rendering, audio, or real-time wait.
+
+        base_score excludes mega/mini-boss bonus points; power-up points are
+        naturally excluded because the bot never collects power-ups.
+        """
+        self._headless = True
+        self._prepare_headless()
+        max_frames = int(max_sim_ms / HEADLESS_FRAME_MS) + 1
+        result = None
+        for _ in range(max_frames):
+            dt, now = self._begin_frame()
+            result = self._advance_frame(now, dt)
+            if result is not None:
+                break
+        won = result == "won"
+        timed_out = result is None
+        return {
+            "lesson_number": self.lesson_number,
+            "won": won,
+            "timed_out": timed_out,
+            "score": max(0, self.score),
+            "bonus_points": max(0, self.bonus_points),
+            "base_score": max(0, self.score - self.bonus_points),
+            "level_time_ms": max(0, int(self.level_time_ms)),
+            "destroyed": max(0, self.destroyed),
+            "drone_target": self.drone_target,
+        }
 
 
 def run_mission(screen, clock, base_dir, lesson_dir_name, valid_keys, player=None):
@@ -3909,3 +4040,15 @@ def run_mission(screen, clock, base_dir, lesson_dir_name, valid_keys, player=Non
         return MissionEngine(screen, clock, base_dir, lesson_dir_name, valid_keys, player).run()
     finally:
         pygame.mouse.set_visible(previous_mouse_visible)
+
+
+def simulate_mission(screen, clock, base_dir, lesson_dir_name, valid_keys, player=None, max_sim_ms=6 * 60 * 1000):
+    """Headlessly autoplay one mission and return its result dict.
+
+    Used by the --play_tests harness. Requires cheat "4" (infinite Mega) enabled
+    so the bot can destroy multi-hp drones and the final boss.
+    """
+    engine = MissionEngine(
+        screen, clock, base_dir, lesson_dir_name, valid_keys, player, headless=True
+    )
+    return engine.simulate_autoplay(max_sim_ms=max_sim_ms)
